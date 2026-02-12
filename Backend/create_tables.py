@@ -5,6 +5,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 db_path = os.path.join(BASE_DIR, 'database.db')
 
 conn = sqlite3.connect(db_path)
+conn.execute("PRAGMA foreign_keys = ON")
 cursor = conn.cursor()
 
 # USERS TABLE
@@ -13,6 +14,7 @@ CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT,
     phone TEXT,
+    password TEXT,
     role TEXT
 )
 """)
@@ -23,9 +25,13 @@ CREATE TABLE IF NOT EXISTS barber_shops (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     barber_id INTEGER,
     shop_name TEXT,
-    address TEXT
+    address TEXT,
+    open_time TEXT,
+    close_time TEXT,
+    FOREIGN KEY(barber_id) REFERENCES users(id)
 )
 """)
+
 
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS services (

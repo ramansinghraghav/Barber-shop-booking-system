@@ -62,25 +62,32 @@ def home():
     return "Server running successfully"
 
 @app.route("/api/services", methods=["GET"])
-@token_required(role="customer")
+@token_required()
 def get_services():
     conn = get_db_connection()
-    services = conn.execute("""
-        SELECT services.id, services.name, services.price, services.duration
-        FROM services
-    """).fetchall()
+
+    role = request.user["role"]
+    user_id = request.user["user_id"]
+
+    if role == "barber":
+        services = conn.execute("""
+            SELECT services.id, services.name, services.price, services.duration
+            FROM services
+            JOIN barber_shops ON services.shop_id = barber_shops.id
+            WHERE barber_shops.barber_id = ?
+        """, (user_id,)).fetchall()
+    else:
+        services = conn.execute("""
+            SELECT id, name, price, duration
+            FROM services
+        """).fetchall()
+
     conn.close()
 
     return {
         "services": [dict(s) for s in services]
     }
-def generate_token(user):
-    payload = {
-        "user_id": user["id"],
-        "role": user["role"],
-        "exp": int(time.time()) + 3600
-    }
-    return jwt.encode(payload, JWT_SECRET, algorithm="HS256")
+
 
 @app.route('/api/login', methods=['POST'])
 def api_login():
@@ -249,6 +256,41 @@ def api_add_service():
 
     return {"success": True, "message": "Service created successfully"}, 201
 
+@app.route('/api/my-bookings', methods=['GET'])
+@token_required(role="customer")
+def my_bookings():
+    user_id = request.user["user_id"]
+    conn = get_db_connection()
+
+    bookings = conn.execute("""
+        SELECT 
+            bookings.id AS booking_id,
+            bookings.status,
+            slots.date,
+            slots.start_time,
+            slots.end_time,
+            services.name AS service_name,
+            barber_shops.shop_name
+        FROM bookings
+        JOIN slots ON bookings.slot_id = slots.id
+        JOIN services ON slots.service_id = services.id
+        JOIN barber_shops ON services.shop_id = barber_shops.id
+        WHERE bookings.user_id = ?
+        ORDER BY slots.date DESC, slots.start_time DESC
+    """, (user_id,)).fetchall()
+
+    conn.close()
+    if not bookings:
+        return {
+        "success": True,
+        "bookings": [],
+        "message": "No bookings found"
+    }
+
+    return {
+        "success": True,
+        "bookings": [dict(b) for b in bookings]
+    }
 
 
 @app.route('/api/cancel-booking', methods=['POST'])
@@ -268,8 +310,10 @@ def cancel_booking():
         conn.close()
         return {"success": False, "message": "Invalid booking"}, 404
 
-    conn.execute("UPDATE bookings SET status='cancelled' WHERE id=?", (booking_id,))
-    conn.execute("UPDATE slots SET is_available=1 WHERE id=?", (booking["slot_id"],))
+    conn.execute(
+    "UPDATE bookings SET status='cancelled' WHERE id=? AND status='booked'",
+    (booking_id,)
+)
     conn.commit()
     conn.close()
 
@@ -401,36 +445,28 @@ def api_book_slot():
     user_id = request.user["user_id"]
     slot_id = data.get('slot_id')
 
-    if not user_id or not slot_id:
-        return {
-            "success": False,
-            "message": "user_id and slot_id required"
-        }, 400
+    if not slot_id:
+        return {"success": False, "message": "slot_id required"}, 400
 
     conn = get_db_connection()
 
-   
-    slot = conn.execute(
-        "SELECT * FROM slots WHERE id = ? AND is_available = 1",
+    # Atomic update (lock slot)
+    cursor = conn.execute(
+        "UPDATE slots SET is_available = 0 WHERE id = ? AND is_available = 1",
         (slot_id,)
-    ).fetchone()
+    )
 
-    if slot is None:
+    if cursor.rowcount == 0:
         conn.close()
         return {
             "success": False,
             "message": "Slot already booked"
         }, 409
 
+    # Insert booking
     conn.execute(
         "INSERT INTO bookings (user_id, slot_id, status) VALUES (?, ?, ?)",
         (user_id, slot_id, "booked")
-    )
-
-
-    conn.execute(
-        "UPDATE slots SET is_available = 0 WHERE id = ?",
-        (slot_id,)
     )
 
     conn.commit()
@@ -440,6 +476,7 @@ def api_book_slot():
         "success": True,
         "message": "Slot booked successfully"
     }, 201
+
 
 if __name__ == '__main__':
     app.run(debug=True)

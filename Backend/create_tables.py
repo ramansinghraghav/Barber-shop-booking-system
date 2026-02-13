@@ -1,69 +1,66 @@
-import sqlite3
-import os
+from db import get_db_connection
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-db_path = os.path.join(BASE_DIR, 'database.db')
+def create_tables():
+    conn = get_db_connection()
+    cursor = conn.cursor()
 
-conn = sqlite3.connect(db_path)
-conn.execute("PRAGMA foreign_keys = ON")
-cursor = conn.cursor()
+    # USERS TABLE
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id SERIAL PRIMARY KEY,
+            name TEXT,
+            phone TEXT UNIQUE,
+            password TEXT,
+            role TEXT
+        )
+    """)
 
-# USERS TABLE
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT,
-    phone TEXT,
-    password TEXT,
-    role TEXT
-)
-""")
+    # BARBER SHOPS
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS barber_shops (
+            id SERIAL PRIMARY KEY,
+            barber_id INTEGER,
+            shop_name TEXT,
+            address TEXT,
+            open_time TEXT,
+            close_time TEXT
+        )
+    """)
 
-# BARBER SHOPS TABLE
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS barber_shops (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    barber_id INTEGER,
-    shop_name TEXT,
-    address TEXT,
-    open_time TEXT,
-    close_time TEXT,
-    FOREIGN KEY(barber_id) REFERENCES users(id)
-)
-""")
+    # SERVICES
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS services (
+            id SERIAL PRIMARY KEY,
+            shop_id INTEGER,
+            name TEXT,
+            price INTEGER,
+            duration INTEGER
+        )
+    """)
 
+    # SLOTS
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS slots (
+            id SERIAL PRIMARY KEY,
+            service_id INTEGER,
+            date DATE,
+            start_time TEXT,
+            end_time TEXT,
+            is_available BOOLEAN DEFAULT TRUE
+        )
+    """)
 
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS services (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    shop_id INTEGER,
-    name TEXT,
-    price INTEGER,
-    duration INTEGER
-)
-""")
+    # BOOKINGS
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS bookings (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER,
+            slot_id INTEGER,
+            status TEXT
+        )
+    """)
 
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS slots (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    service_id INTEGER,
-    date TEXT,
-    start_time TEXT,
-    end_time TEXT,
-    is_available INTEGER
-)
-""")
+    conn.commit()
+    conn.close()
 
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS bookings (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER,
-    slot_id INTEGER,
-    status TEXT
-)
-""")
-
-conn.commit()
-conn.close()
-
-print("All tables created successfully ✅")
+    print("All tables created successfully ✅")

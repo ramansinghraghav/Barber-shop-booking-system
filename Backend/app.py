@@ -6,6 +6,7 @@ import sqlite3
 import time
 import os
 import jwt
+from Backend.create_tables import create_tables
 from functools import wraps
 from dotenv import load_dotenv
 load_dotenv()
@@ -32,6 +33,17 @@ app.secret_key = FLASK_SECRET_KEY
 
 CORS(app)
 
+def generate_token(user):
+    payload = {
+        "user_id": user["id"],
+        "role": user["role"],
+        "exp": datetime.utcnow() + timedelta(hours=12),
+        "iat": datetime.utcnow()
+    }
+
+    return jwt.encode(payload, JWT_SECRET, algorithm="HS256")
+
+
 def token_required(role=None):
     def decorator(f):
         @wraps(f)
@@ -42,7 +54,11 @@ def token_required(role=None):
                 return {"success": False, "message": "Token missing"}, 401
 
             try:
+                if not auth.startswith("Bearer "):
+                    return {"success": False, "message": "Invalid token format"}, 401
+
                 token = auth.split(" ")[1]
+
                 data = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
             except jwt.ExpiredSignatureError:
                 return {"success": False, "message": "Token expired"}, 401
@@ -112,7 +128,16 @@ def api_login():
 
         if user and check_password_hash(user["password"], password):
             token = generate_token(user)
-            return {"success": True, "token": token}
+            return {
+        "success": True,
+        "token": token,
+        "user": {
+            "id": user["id"],
+            "name": user["name"],
+            "role": user["role"]
+        }
+    }
+
 
         return {"success": False, "message": "Invalid credentials"}, 401
 
@@ -140,6 +165,10 @@ def api_signup():
         if not name or not phone or not raw_password or not role:
             return {"success": False, "message": "name, phone, password, role required"}, 400
 
+        # ✅ Role validation BEFORE insert
+        if role not in ["customer", "barber"]:
+            return {"success": False, "message": "Invalid role"}, 400
+
         password = generate_password_hash(raw_password)
 
         conn = get_db_connection()
@@ -151,6 +180,7 @@ def api_signup():
         ).fetchone()
 
         if existing:
+            conn.close()
             return {"success": False, "message": "Phone already registered"}, 409
 
         # insert user
@@ -160,14 +190,13 @@ def api_signup():
         )
 
         conn.commit()
+        conn.close()
+
         return {"success": True, "message": "User created successfully"}
 
     except Exception as e:
         return {"success": False, "error": str(e)}, 500
 
-    finally:
-        if 'conn' in locals():
-            conn.close()
 
 
 @app.route('/api/shop', methods=['POST'])
@@ -313,6 +342,10 @@ def cancel_booking():
     conn.execute(
     "UPDATE bookings SET status='cancelled' WHERE id=? AND status='booked'",
     (booking_id,)
+)
+    conn.execute(
+    "UPDATE slots SET is_available = 1 WHERE id = ?",
+    (booking["slot_id"],)
 )
     conn.commit()
     conn.close()

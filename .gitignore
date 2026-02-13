@@ -10,3 +10,5 @@ database.db
 # OS
 .DS_Store
 Thumbs.db
+
+Backend/database.db

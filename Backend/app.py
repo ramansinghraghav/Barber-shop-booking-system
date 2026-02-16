@@ -2,8 +2,8 @@ from werkzeug.security import generate_password_hash,check_password_hash
 from flask import Flask, request
 from flask_cors import CORS
 from datetime import datetime, timedelta
-from Backend.db import get_db_connection
-from Backend.create_tables import create_tables
+from db import get_db_connection
+from create_tables import create_tables
 import os
 import jwt
 from functools import wraps
@@ -150,6 +150,8 @@ def api_login():
     finally:
         if conn:
             conn.close()
+    print("TOKEN:", token)
+
 
 
 @app.route('/api/signup', methods=['POST'])

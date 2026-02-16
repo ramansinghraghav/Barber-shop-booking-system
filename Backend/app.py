@@ -1,25 +1,31 @@
 from werkzeug.security import generate_password_hash,check_password_hash
-from flask import Flask, request
 from flask_cors import CORS
 from datetime import datetime, timedelta
 from Backend.db import get_db_connection
 from Backend.create_tables import create_tables
+from flask import Flask, request, jsonify, make_response
 import os
 import jwt
 from functools import wraps
 from dotenv import load_dotenv
 load_dotenv()
 
-JWT_SECRET = os.getenv("JWT_SECRET")
 FLASK_SECRET_KEY = os.getenv("FLASK_SECRET_KEY")
 
-if not JWT_SECRET or not FLASK_SECRET_KEY:
-    raise Exception("Missing secrets in .env file")
+if not FLASK_SECRET_KEY:
+    raise Exception("Missing FLASK_SECRET_KEY in .env")
+
+JWT_ACCESS_SECRET = os.getenv("JWT_ACCESS_SECRET")
+JWT_REFRESH_SECRET = os.getenv("JWT_REFRESH_SECRET")
+
+if not JWT_ACCESS_SECRET or not JWT_REFRESH_SECRET:
+    raise Exception("JWT secrets missing in .env file")
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 if not DATABASE_URL:
     raise Exception("DATABASE_URL missing in .env")
+
 
 
 app = Flask (__name__)
@@ -29,19 +35,35 @@ if os.getenv("FLASK_ENV") == "development":
 
 app.secret_key = FLASK_SECRET_KEY
 
-CORS(app)
+CORS(
+    app,
+    supports_credentials=True,
+    origins=[
+        "http://localhost:3000",
+        "https://barber-shop-booking-system.onrender.com"
+    ]
+)
 
-def generate_token(user):
+
+
+
+def generate_access_token(user):
     payload = {
         "user_id": user["id"],
         "role": user["role"],
-        "exp": datetime.utcnow() + timedelta(hours=12),
-        "iat": datetime.utcnow()
+        "exp": datetime.utcnow() + timedelta(minutes=15)
     }
+    return jwt.encode(payload, JWT_ACCESS_SECRET, algorithm="HS256")
 
-    token = jwt.encode(payload, JWT_SECRET, algorithm="HS256")
-    return token if isinstance(token, str) else token.decode("utf-8")
 
+
+def generate_refresh_token(user):
+    payload = {
+    "user_id": user["id"],
+    "role": user["role"],
+    "exp": datetime.utcnow() + timedelta(days=7)
+    }
+    return jwt.encode(payload, JWT_REFRESH_SECRET, algorithm="HS256")
 
 
 
@@ -60,7 +82,9 @@ def token_required(role=None):
 
                 token = auth.split(" ")[1]
 
-                data = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
+                data = jwt.decode(token, JWT_ACCESS_SECRET, algorithms=["HS256"])
+
+
             except jwt.ExpiredSignatureError:
                 return {"success": False, "message": "Token expired"}, 401
             except jwt.InvalidTokenError:
@@ -122,12 +146,9 @@ def api_login():
         if not phone or not password:
             return {"success": False, "message": "Phone and password required"}, 400
 
-        # ✅ PostgreSQL connection
         conn = get_db_connection()
         cursor = conn.cursor()
 
-
-        # ✅ execute via cursor (NOT conn)
         cursor.execute(
             "SELECT * FROM users WHERE phone = %s",
             (phone,)
@@ -136,17 +157,31 @@ def api_login():
         user = cursor.fetchone()
 
         if user and check_password_hash(user["password"], password):
-            token = generate_token(user)
 
-            return {
+            access_token = generate_access_token(user)
+            refresh_token = generate_refresh_token(user)
+
+            response = make_response(jsonify({
                 "success": True,
-                "token": token,
+                "access_token": access_token,
                 "user": {
                     "id": user["id"],
                     "name": user["name"],
                     "role": user["role"]
                 }
-            }
+            }))
+
+            is_production = os.getenv("FLASK_ENV") == "production"
+
+            response.set_cookie(
+                "refresh_token",
+                refresh_token,
+                httponly=True,
+                secure=is_production,
+                samesite="None" if is_production else "Lax"
+            )
+
+            return response
 
         return {"success": False, "message": "Invalid credentials"}, 401
 
@@ -156,6 +191,7 @@ def api_login():
     finally:
         if conn:
             conn.close()
+
 
 
 
@@ -546,6 +582,41 @@ def api_book_slot():
         "success": True,
         "message": "Slot booked successfully"
     }, 201
+
+@app.route("/api/refresh", methods=["POST"])
+def refresh_access_token():
+
+    token = request.cookies.get("refresh_token")
+
+    if not token:
+        return {"message": "No refresh token"}, 401
+
+    try:
+        data = jwt.decode(
+        token,
+        JWT_REFRESH_SECRET,
+        algorithms=["HS256"]
+    )
+
+        new_access = jwt.encode(
+{
+    "user_id": data["user_id"],
+    "role": data["role"],
+    "exp": datetime.utcnow() + timedelta(minutes=15)
+},
+        JWT_ACCESS_SECRET,
+        algorithm="HS256"
+)
+
+
+
+        return {"access_token": new_access}
+
+    except jwt.ExpiredSignatureError:
+        return {"message": "Refresh expired"}, 401
+
+    except jwt.InvalidTokenError:
+        return {"message": "Invalid refresh token"}, 401
 
 
 if __name__ == '__main__':

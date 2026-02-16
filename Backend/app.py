@@ -18,9 +18,14 @@ if not JWT_SECRET or not FLASK_SECRET_KEY:
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
+if not DATABASE_URL:
+    raise Exception("DATABASE_URL missing in .env")
+
+
 app = Flask (__name__)
 
-create_tables()
+if os.getenv("FLASK_ENV") == "development":
+    create_tables()
 
 app.secret_key = FLASK_SECRET_KEY
 
@@ -121,6 +126,7 @@ def api_login():
         conn = get_db_connection()
         cursor = conn.cursor()
 
+
         # ✅ execute via cursor (NOT conn)
         cursor.execute(
             "SELECT * FROM users WHERE phone = %s",
@@ -150,7 +156,6 @@ def api_login():
     finally:
         if conn:
             conn.close()
-    print("TOKEN:", token)
 
 
 
@@ -191,8 +196,6 @@ def api_signup():
             conn.close()
             return {"success": False, "message": "Phone already registered"}, 409
 
-        # insert user
-        cursor = conn.cursor()
         cursor.execute(
             "INSERT INTO users (name, phone, password, role) VALUES (%s, %s, %s, %s)",
             (name, phone, password, role)
@@ -230,8 +233,9 @@ def api_add_shop():
         }, 400
 
     conn = get_db_connection()
-
     cursor = conn.cursor()
+
+    
     cursor.execute(
         "SELECT id FROM barber_shops WHERE barber_id=%s",
         (barber_id,)
@@ -242,7 +246,7 @@ def api_add_shop():
         conn.close()
         return {"success": False, "message": "Shop already exists"}, 409
 
-    cursor = conn.cursor()
+    
 
     cursor.execute(
         "INSERT INTO barber_shops (barber_id, shop_name, address, open_time, close_time) VALUES (%s, %s, %s, %s, %s)",
@@ -275,11 +279,11 @@ def api_add_service():
             "message": "shop_id, name, price, duration required"
         }, 400
 
-    conn = get_db_connection()                  
+    conn = get_db_connection() 
+    cursor = conn.cursor()                 
     barber_id = request.user["user_id"]            
 
 
-    cursor = conn.cursor()
 
     cursor.execute(
     "SELECT id FROM barber_shops WHERE id=%s AND barber_id=%s",
@@ -309,6 +313,7 @@ def my_bookings():
 
     conn = get_db_connection()
     cursor = conn.cursor()
+
 
     cursor.execute("""
         SELECT 
@@ -345,6 +350,7 @@ def cancel_booking():
 
     conn = get_db_connection()
     cursor = conn.cursor()
+    
 
     cursor.execute(
         "SELECT slot_id FROM bookings WHERE id=%s AND user_id=%s",
@@ -385,9 +391,9 @@ def api_generate_slots():
     if not service_id:
         return {"success": False, "message": "service_id required"}, 400
 
-    conn = get_db_connection()  
+    conn = get_db_connection() 
+    cursor = conn.cursor() 
 
-    cursor = conn.cursor()
     cursor.execute(
         "SELECT * FROM services WHERE id = %s",
         (service_id,)
@@ -466,8 +472,9 @@ def api_generate_slots():
 @token_required(role="customer")
 def api_view_slots(service_id):
     conn = get_db_connection()
-
     cursor = conn.cursor()
+
+   
     cursor.execute("""
         SELECT id, date, start_time, end_time
         FROM slots
@@ -511,8 +518,9 @@ def api_book_slot():
         return {"success": False, "message": "slot_id required"}, 400
 
     conn = get_db_connection()
-
     cursor = conn.cursor()
+
+    
     cursor.execute(
         "UPDATE slots SET is_available = 0 WHERE id = %s AND is_available = 1",
         (slot_id,)
@@ -538,6 +546,10 @@ def api_book_slot():
         "success": True,
         "message": "Slot booked successfully"
     }, 201
+
+
 if __name__ == '__main__':
-    app.run()
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
+
 

@@ -17,6 +17,11 @@ if not FLASK_SECRET_KEY:
 
 JWT_ACCESS_SECRET = os.getenv("JWT_ACCESS_SECRET")
 JWT_REFRESH_SECRET = os.getenv("JWT_REFRESH_SECRET")
+FLASK_SECRET_KEY = os.getenv("FLASK_SECRET_KEY")
+
+
+print("ACCESS:", os.getenv("JWT_ACCESS_SECRET"))
+print("REFRESH:", os.getenv("JWT_REFRESH_SECRET"))
 
 if not JWT_ACCESS_SECRET or not JWT_REFRESH_SECRET:
     raise Exception("JWT secrets missing in .env file")
@@ -582,6 +587,10 @@ def api_book_slot():
         "success": True,
         "message": "Slot booked successfully"
     }, 201
+    
+@app.route("/health")
+def health():
+    return {"status": "ok"}
 
 @app.route("/api/refresh", methods=["POST"])
 def refresh_access_token():
@@ -610,7 +619,11 @@ def refresh_access_token():
 
 
 
-        return {"access_token": new_access}
+        return {
+            "success": True,
+            "access_token": new_access
+}
+
 
     except jwt.ExpiredSignatureError:
         return {"message": "Refresh expired"}, 401

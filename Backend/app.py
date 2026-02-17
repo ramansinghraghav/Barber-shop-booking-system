@@ -16,9 +16,6 @@ JWT_REFRESH_SECRET = os.getenv("JWT_REFRESH_SECRET")
 
 if not FLASK_SECRET_KEY:
     raise Exception("Missing FLASK_SECRET_KEY in .env")
-    
-print("ACCESS:", JWT_ACCESS_SECRET)
-print("REFRESH:", JWT_REFRESH_SECRET)
 
 if not JWT_ACCESS_SECRET or not JWT_REFRESH_SECRET:
     raise Exception("JWT secrets missing in .env file")

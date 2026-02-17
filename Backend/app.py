@@ -10,12 +10,9 @@ from functools import wraps
 from dotenv import load_dotenv
 load_dotenv()
 
-
-
 FLASK_SECRET_KEY = os.getenv("FLASK_SECRET_KEY")
 JWT_ACCESS_SECRET = os.getenv("JWT_ACCESS_SECRET")
 JWT_REFRESH_SECRET = os.getenv("JWT_REFRESH_SECRET")
-
 
 if not FLASK_SECRET_KEY:
     raise Exception("Missing FLASK_SECRET_KEY in .env")

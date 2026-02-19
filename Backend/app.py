@@ -36,12 +36,10 @@ app.secret_key = FLASK_SECRET_KEY
 
 CORS(
     app,
-    supports_credentials=True,
-    origins=[
-        "http://localhost:3000",
-        "https://barber-shop-booking-system.onrender.com"
-    ]
+    resources={r"/api/*": {"origins": "*"}},
+    supports_credentials=True
 )
+
 
 def generate_access_token(user):
     payload = {
@@ -61,7 +59,7 @@ def generate_refresh_token(user):
 
 @app.after_request
 def add_headers(response):
-    response.headers["Content-Type"] = "application/json"
+    response.headers.setdefault("Content-Type", "application/json")
     return response
 
 
@@ -208,7 +206,7 @@ def api_signup():
     except Exception as e:
         return {"success": False, "error": str(e)}, 500
 
-@app.route('/api/login', methods=['POST'])
+@app.route('/api/login', methods=['POST', 'OPTIONS'])
 def api_login():
     conn = None
     try:

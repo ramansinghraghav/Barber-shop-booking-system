@@ -206,6 +206,11 @@ def api_signup():
     except Exception as e:
         return {"success": False, "error": str(e)}, 500
 
+@app.route('/api/<path:path>', methods=['OPTIONS'])
+def options_handler(path):
+    return '', 200
+
+
 @app.route('/api/login', methods=['POST', 'OPTIONS'])
 def api_login():
     conn = None

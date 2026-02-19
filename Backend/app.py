@@ -43,26 +43,48 @@ CORS(
     ]
 )
 
-
-
-
 def generate_access_token(user):
     payload = {
         "user_id": user["id"],
         "role": user["role"],
-        "exp": datetime.utcnow() + timedelta(hours==1)
+        "exp": datetime.utcnow() + timedelta(hours=6)
     }
     return jwt.encode(payload, JWT_ACCESS_SECRET, algorithm="HS256")
 
-
-
 def generate_refresh_token(user):
     payload = {
-    "user_id": user["id"],
-    "role": user["role"],
-    "exp": datetime.utcnow() + timedelta(days=7)
+        "user_id": user["id"],
+        "role": user["role"],
+        "exp": datetime.utcnow() + timedelta(days=7)
     }
     return jwt.encode(payload, JWT_REFRESH_SECRET, algorithm="HS256")
+
+@app.after_request
+def add_headers(response):
+    response.headers["Content-Type"] = "application/json"
+    return response
+
+
+@app.route("/api/logout", methods=["POST"])
+def logout():
+    response = make_response({
+        "success": True,
+        "message": "Logged out successfully"
+    })
+
+    is_production = os.getenv("FLASK_ENV") == "production"
+
+    response.set_cookie(
+        "refresh_token",
+        "",
+        expires=0,
+        httponly=True,
+        secure=is_production,
+        samesite="None" if is_production else "Lax"
+    )
+
+    return response
+
 
 
 
@@ -118,18 +140,20 @@ def refresh_access_token():
     )
 
         new_access = jwt.encode(
-{
-    "user_id": data["user_id"],
-    "role": data["role"],
-    "exp": datetime.utcnow() + timedelta(minutes=15)
-},
-        JWT_ACCESS_SECRET,
-        algorithm="HS256"
+    {
+        "user_id": data["user_id"],
+        "role": data["role"],
+        "exp": datetime.utcnow() + timedelta(hours=6)
+    },
+            JWT_ACCESS_SECRET,
+            algorithm="HS256"
 )
-        return {
-            "success": True,
-            "access_token": new_access
-}
+
+        return jsonify({
+    "success": True,
+    "access_token": new_access
+})
+
     except jwt.ExpiredSignatureError:
         return {"message": "Refresh expired"}, 401
 
@@ -532,6 +556,127 @@ def api_view_slots(service_id):
         ]
     }
 
+@app.route("/api/service/<int:service_id>", methods=["PUT"])
+@token_required(role="barber")
+def update_service(service_id):
+
+    data = request.get_json()
+    if not data:
+        return {"success": False, "message": "JSON body required"}, 400
+
+
+    name = data.get("name")
+    price = data.get("price")
+    duration = data.get("duration")
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    barber_id = request.user["user_id"]
+
+    cursor.execute("""
+        SELECT services.id
+        FROM services
+        JOIN barber_shops ON services.shop_id = barber_shops.id
+        WHERE services.id=%s AND barber_shops.barber_id=%s
+    """, (service_id, barber_id))
+
+    if not cursor.fetchone():
+        conn.close()
+        return {"success": False, "message": "Unauthorized"}, 403
+
+    cursor.execute("""
+        UPDATE services
+        SET name=%s, price=%s, duration=%s
+        WHERE id=%s
+    """, (name, price, duration, service_id))
+
+    conn.commit()
+    conn.close()
+
+    return {"success": True, "message": "Service updated"}
+
+@app.route("/api/service/<int:service_id>", methods=["DELETE"])
+@token_required(role="barber")
+def delete_service(service_id):
+
+    barber_id = request.user["user_id"]
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        DELETE services FROM services
+        JOIN barber_shops ON services.shop_id = barber_shops.id
+        WHERE services.id=%s AND barber_shops.barber_id=%s
+    """, (service_id, barber_id))
+
+    if cursor.rowcount == 0:
+        conn.close()
+        return {"success": False, "message": "Unauthorized"}, 403
+
+    conn.commit()
+    conn.close()
+
+    return {"success": True, "message": "Service deleted"}
+
+@app.route("/api/shop", methods=["GET"])
+@token_required(role="barber")
+def get_shop():
+
+    barber_id = request.user["user_id"]
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        "SELECT * FROM barber_shops WHERE barber_id=%s",
+        (barber_id,)
+    )
+
+    shop = cursor.fetchone()
+    conn.close()
+
+    if not shop:
+        return {"success": False, "message": "Shop not found"}, 404
+
+    return {"success": True, "shop": shop}
+
+@app.route("/api/barber-bookings", methods=["GET"])
+@token_required(role="barber")
+def barber_bookings():
+
+    barber_id = request.user["user_id"]
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT 
+            bookings.id AS booking_id,
+            bookings.status,
+            users.name AS customer_name,
+            slots.date,
+            slots.start_time,
+            slots.end_time,
+            services.name AS service_name
+        FROM bookings
+        JOIN slots ON bookings.slot_id = slots.id
+        JOIN services ON slots.service_id = services.id
+        JOIN barber_shops ON services.shop_id = barber_shops.id
+        JOIN users ON bookings.user_id = users.id
+        WHERE barber_shops.barber_id = %s
+    """, (barber_id,))
+
+    data = cursor.fetchall()
+    conn.close()
+
+    return {
+        "success": True,
+        "bookings": data
+    }
+
+
 @app.route('/api/my-bookings', methods=['GET'])
 @token_required(role="customer")
 def my_bookings():
@@ -571,7 +716,12 @@ def my_bookings():
 @token_required(role="customer")
 def cancel_booking():
 
-    booking_id = request.get_json().get("booking_id")
+    data = request.get_json()
+    if not data:
+        return {"success": False, "message": "JSON body required"}, 400
+
+    booking_id = data.get("booking_id")
+
     user_id = request.user["user_id"]
 
     conn = get_db_connection()

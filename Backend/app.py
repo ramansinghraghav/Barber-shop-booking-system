@@ -29,16 +29,28 @@ if not DATABASE_URL:
 
 app = Flask (__name__)
 
+CORS(
+    app,
+    supports_credentials=True,
+    resources={r"/api/*": {
+        "origins": [
+            "http://localhost:5500",
+            "https://barber-shop-booking-system.onrender.com"
+        ]
+    }}
+)
+
 if os.getenv("FLASK_ENV") == "development":
     create_tables()
 
 app.secret_key = FLASK_SECRET_KEY
-
-CORS(
-    app,
-    resources={r"/api/*": {"origins": "*"}},
-    supports_credentials=True
-)
+@app.after_request
+def add_cors_headers(response):
+    response.headers["Access-Control-Allow-Origin"] = "http://localhost:5500"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type,Authorization"
+    response.headers["Access-Control-Allow-Methods"] = "GET,POST,PUT,DELETE,OPTIONS"
+    response.headers["Access-Control-Allow-Credentials"] = "true"
+    return response
 
 
 def generate_access_token(user):

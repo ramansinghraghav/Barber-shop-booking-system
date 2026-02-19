@@ -50,7 +50,7 @@ def generate_access_token(user):
     payload = {
         "user_id": user["id"],
         "role": user["role"],
-        "exp": datetime.utcnow() + timedelta(minutes=15)
+        "exp": datetime.utcnow() + timedelta(hours==1)
     }
     return jwt.encode(payload, JWT_ACCESS_SECRET, algorithm="HS256")
 
@@ -101,34 +101,88 @@ def token_required(role=None):
 def home():
     return "Server running successfully"
 
-@app.route("/api/services", methods=["GET"])
-@token_required()
-def get_services():
 
-    conn = get_db_connection()
-    cursor = conn.cursor()
+@app.route("/api/refresh", methods=["POST"])
+def refresh_access_token():
 
-    role = request.user["role"]
-    user_id = request.user["user_id"]
+    token = request.cookies.get("refresh_token")
 
-    if role == "barber":
-        cursor.execute("""
-            SELECT services.id, services.name, services.price, services.duration
-            FROM services
-            JOIN barber_shops ON services.shop_id = barber_shops.id
-            WHERE barber_shops.barber_id = %s
-        """, (user_id,))
-    else:
-        cursor.execute("""
-            SELECT id, name, price, duration FROM services
-        """)
+    if not token:
+        return {"message": "No refresh token"}, 401
 
-    services = cursor.fetchall()
+    try:
+        data = jwt.decode(
+        token,
+        JWT_REFRESH_SECRET,
+        algorithms=["HS256"]
+    )
 
-    conn.close()
+        new_access = jwt.encode(
+{
+    "user_id": data["user_id"],
+    "role": data["role"],
+    "exp": datetime.utcnow() + timedelta(minutes=15)
+},
+        JWT_ACCESS_SECRET,
+        algorithm="HS256"
+)
+        return {
+            "success": True,
+            "access_token": new_access
+}
+    except jwt.ExpiredSignatureError:
+        return {"message": "Refresh expired"}, 401
 
-    return {"services": services}
+    except jwt.InvalidTokenError:
+        return {"message": "Invalid refresh token"}, 401
 
+@app.route('/api/signup', methods=['POST'])
+def api_signup():
+    try:
+        data = request.get_json()
+
+        if not data:
+            return {"success": False, "message": "JSON body required"}, 400
+
+        name = data.get('name')
+        phone = data.get('phone')
+        raw_password = data.get('password')
+        role = data.get('role')
+
+        if not name or not phone or not raw_password or not role:
+            return {"success": False, "message": "name, phone, password, role required"}, 400
+
+        # ✅ Role validation BEFORE insert
+        if role not in ["customer", "barber"]:
+            return {"success": False, "message": "Invalid role"}, 400
+
+        password = generate_password_hash(raw_password)
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        cursor.execute(
+        "SELECT id FROM users WHERE phone=%s",
+        (phone,)
+)
+
+        existing = cursor.fetchone()
+
+        if existing:
+            conn.close()
+            return {"success": False, "message": "Phone already registered"}, 409
+
+        cursor.execute(
+            "INSERT INTO users (name, phone, password, role) VALUES (%s, %s, %s, %s)",
+            (name, phone, password, role)
+)
+        conn.commit()
+        conn.close()
+
+        return {"success": True, "message": "User created successfully"}
+
+    except Exception as e:
+        return {"success": False, "error": str(e)}, 500
 
 @app.route('/api/login', methods=['POST'])
 def api_login():
@@ -192,59 +246,76 @@ def api_login():
             conn.close()
 
 
+@app.route("/api/services", methods=["GET"])
+@token_required()
+def get_services():
 
+    conn = get_db_connection()
+    cursor = conn.cursor()
 
-@app.route('/api/signup', methods=['POST'])
-def api_signup():
-    try:
-        data = request.get_json()
+    role = request.user["role"]
+    user_id = request.user["user_id"]
 
-        if not data:
-            return {"success": False, "message": "JSON body required"}, 400
+    if role == "barber":
+        cursor.execute("""
+            SELECT services.id, services.name, services.price, services.duration
+            FROM services
+            JOIN barber_shops ON services.shop_id = barber_shops.id
+            WHERE barber_shops.barber_id = %s
+        """, (user_id,))
+    else:
+        cursor.execute("""
+            SELECT id, name, price, duration FROM services
+        """)
 
-        name = data.get('name')
-        phone = data.get('phone')
-        raw_password = data.get('password')
-        role = data.get('role')
+    services = cursor.fetchall()
 
-        if not name or not phone or not raw_password or not role:
-            return {"success": False, "message": "name, phone, password, role required"}, 400
+    conn.close()
 
-        # ✅ Role validation BEFORE insert
-        if role not in ["customer", "barber"]:
-            return {"success": False, "message": "Invalid role"}, 400
+    return {"services": services}
 
-        password = generate_password_hash(raw_password)
+@app.route('/api/service', methods=['POST'])
+@token_required(role="barber")
+def api_add_service():
+    data = request.get_json()
 
-        conn = get_db_connection()
-        cursor = conn.cursor()
+    if not data:
+        return {"success": False, "message": "JSON body required"}, 400
 
-        cursor.execute(
-        "SELECT id FROM users WHERE phone=%s",
-        (phone,)
+    shop_id = data.get('shop_id')
+    name = data.get('name')
+    price = data.get('price')
+    duration = data.get('duration')
+
+    if not shop_id or not name or not price or not duration:
+        return {
+            "success": False,
+            "message": "shop_id, name, price, duration required"
+        }, 400
+
+    conn = get_db_connection() 
+    cursor = conn.cursor()                 
+    barber_id = request.user["user_id"]            
+
+    cursor.execute(
+    "SELECT id FROM barber_shops WHERE id=%s AND barber_id=%s",
+    (shop_id, barber_id)
 )
+    shop = cursor.fetchone()
 
-        existing = cursor.fetchone()
-
-
-        if existing:
-            conn.close()
-            return {"success": False, "message": "Phone already registered"}, 409
-
-        cursor.execute(
-            "INSERT INTO users (name, phone, password, role) VALUES (%s, %s, %s, %s)",
-            (name, phone, password, role)
-)
-
-
-        conn.commit()
+    if not shop:
         conn.close()
+        return {"success": False, "message": "Unauthorized shop"}, 403
 
-        return {"success": True, "message": "User created successfully"}
+    cursor.execute(
+        "INSERT INTO services (shop_id, name, price, duration) VALUES (%s, %s, %s, %s)",
+        (shop_id, name, price, duration)
+    )
 
-    except Exception as e:
-        return {"success": False, "error": str(e)}, 500
+    conn.commit()
+    conn.close()
 
+    return {"success": True, "message": "Service created successfully"}, 201
 
 
 @app.route('/api/shop', methods=['POST'])
@@ -287,132 +358,10 @@ def api_add_shop():
         "INSERT INTO barber_shops (barber_id, shop_name, address, open_time, close_time) VALUES (%s, %s, %s, %s, %s)",
         (barber_id, shop_name, address, open_time, close_time)
 )
-
-
     conn.commit()
     conn.close()
 
     return {"success": True, "message": "Shop created successfully"}, 201
-
-
-@app.route('/api/service', methods=['POST'])
-@token_required(role="barber")
-def api_add_service():
-    data = request.get_json()
-
-    if not data:
-        return {"success": False, "message": "JSON body required"}, 400
-
-    shop_id = data.get('shop_id')
-    name = data.get('name')
-    price = data.get('price')
-    duration = data.get('duration')
-
-    if not shop_id or not name or not price or not duration:
-        return {
-            "success": False,
-            "message": "shop_id, name, price, duration required"
-        }, 400
-
-    conn = get_db_connection() 
-    cursor = conn.cursor()                 
-    barber_id = request.user["user_id"]            
-
-
-
-    cursor.execute(
-    "SELECT id FROM barber_shops WHERE id=%s AND barber_id=%s",
-    (shop_id, barber_id)
-)
-    shop = cursor.fetchone()
-
-    if not shop:
-        conn.close()
-        return {"success": False, "message": "Unauthorized shop"}, 403
-
-    cursor.execute(
-        "INSERT INTO services (shop_id, name, price, duration) VALUES (%s, %s, %s, %s)",
-        (shop_id, name, price, duration)
-    )
-
-    conn.commit()
-    conn.close()
-
-    return {"success": True, "message": "Service created successfully"}, 201
-
-@app.route('/api/my-bookings', methods=['GET'])
-@token_required(role="customer")
-def my_bookings():
-
-    user_id = request.user["user_id"]
-
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
-
-    cursor.execute("""
-        SELECT 
-            bookings.id AS booking_id,
-            bookings.status,
-            slots.date,
-            slots.start_time,
-            slots.end_time,
-            services.name AS service_name,
-            barber_shops.shop_name
-        FROM bookings
-        JOIN slots ON bookings.slot_id = slots.id
-        JOIN services ON slots.service_id = services.id
-        JOIN barber_shops ON services.shop_id = barber_shops.id
-        WHERE bookings.user_id = %s
-    """, (user_id,))
-
-    bookings = cursor.fetchall()
-
-    conn.close()
-
-    return {
-        "success": True,
-        "bookings": bookings
-    }
-
-
-@app.route('/api/cancel-booking', methods=['POST'])
-@token_required(role="customer")
-def cancel_booking():
-
-    booking_id = request.get_json().get("booking_id")
-    user_id = request.user["user_id"]
-
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-
-    cursor.execute(
-        "SELECT slot_id FROM bookings WHERE id=%s AND user_id=%s",
-        (booking_id, user_id)
-    )
-
-    booking = cursor.fetchone()
-
-    if not booking:
-        conn.close()
-        return {"success": False, "message": "Invalid booking"}, 404
-
-    cursor.execute(
-        "UPDATE bookings SET status='cancelled' WHERE id=%s",
-        (booking_id,)
-    )
-
-    cursor.execute(
-        "UPDATE slots SET is_available = 1 WHERE id=%s",
-        (booking["slot_id"],)
-    )
-
-    conn.commit()
-    conn.close()
-
-    return {"success": True, "message": "Booking cancelled"}
-
 
 @app.route('/api/generate-slots', methods=['POST'])
 @token_required(role="barber")
@@ -439,7 +388,6 @@ def api_generate_slots():
         conn.close()
         return {"success": False, "message": "Service not found"}, 404
 
-    cursor = conn.cursor()
     cursor.execute("""
     SELECT barber_shops.barber_id
     FROM services
@@ -478,10 +426,11 @@ def api_generate_slots():
         conn.close()
         return {"success": False, "message": "Shop not found"}, 404
 
-    start_time = datetime.strptime(shop["open_time"], "%H:%M")
-    end_time = datetime.strptime(shop["close_time"], "%H:%M")
+    start_time = datetime.strptime(str(shop["open_time"]), "%H:%M:%S")
+    end_time = datetime.strptime(str(shop["close_time"]), "%H:%M:%S")
 
-    duration = int(service['duration'])
+
+    duration = int(service["duration"])
 
     current = start_time
     while current + timedelta(minutes=duration) <= end_time:
@@ -503,40 +452,6 @@ def api_generate_slots():
 
     return {"success": True, "message": "Slots generated successfully"}, 201
 
-@app.route('/api/slots/<int:service_id>', methods=['GET'])
-@token_required(role="customer")
-def api_view_slots(service_id):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
-   
-    cursor.execute("""
-        SELECT id, date, start_time, end_time
-        FROM slots
-        WHERE service_id = %s AND is_available = 1
-    """, (service_id,))
-    slots = cursor.fetchall()
-
-    conn.close()
-
-    if not slots:
-        return {
-            "success": False,
-            "message": "No available slots"
-        }, 404
-
-    return {
-        "success": True,
-        "slots": [
-            {
-                "slot_id": s["id"],
-                "date": s["date"],
-                "start_time": s["start_time"],
-                "end_time": s["end_time"]
-            }
-            for s in slots
-        ]
-    }
 
 @app.route('/api/book-slot', methods=['POST'])
 @token_required(role="customer")
@@ -581,49 +496,118 @@ def api_book_slot():
         "success": True,
         "message": "Slot booked successfully"
     }, 201
+
+@app.route('/api/slots/<int:service_id>', methods=['GET'])
+@token_required(role="customer")
+def api_view_slots(service_id):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+   
+    cursor.execute("""
+        SELECT id, date, start_time, end_time
+        FROM slots
+        WHERE service_id = %s AND is_available = 1
+    """, (service_id,))
+    slots = cursor.fetchall()
+
+    conn.close()
+
+    if not slots:
+        return {
+            "success": False,
+            "message": "No available slots"
+        }, 404
+
+    return {
+        "success": True,
+        "slots": [
+            {
+                "slot_id": s["id"],
+                "date": s["date"],
+                "start_time": s["start_time"],
+                "end_time": s["end_time"]
+            }
+            for s in slots
+        ]
+    }
+
+@app.route('/api/my-bookings', methods=['GET'])
+@token_required(role="customer")
+def my_bookings():
+
+    user_id = request.user["user_id"]
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+
+    cursor.execute("""
+        SELECT 
+            bookings.id AS booking_id,
+            bookings.status,
+            slots.date,
+            slots.start_time,
+            slots.end_time,
+            services.name AS service_name,
+            barber_shops.shop_name
+        FROM bookings
+        JOIN slots ON bookings.slot_id = slots.id
+        JOIN services ON slots.service_id = services.id
+        JOIN barber_shops ON services.shop_id = barber_shops.id
+        WHERE bookings.user_id = %s
+    """, (user_id,))
+
+    bookings = cursor.fetchall()
+
+    conn.close()
+
+    return {
+        "success": True,
+        "bookings": bookings
+    }
+
+@app.route('/api/cancel-booking', methods=['POST'])
+@token_required(role="customer")
+def cancel_booking():
+
+    booking_id = request.get_json().get("booking_id")
+    user_id = request.user["user_id"]
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+
+    cursor.execute(
+        "SELECT slot_id FROM bookings WHERE id=%s AND user_id=%s",
+        (booking_id, user_id)
+    )
+
+    booking = cursor.fetchone()
+
+    if not booking:
+        conn.close()
+        return {"success": False, "message": "Invalid booking"}, 404
+
+    cursor.execute(
+        "UPDATE bookings SET status='cancelled' WHERE id=%s",
+        (booking_id,)
+    )
+
+    cursor.execute(
+        "UPDATE slots SET is_available = 1 WHERE id=%s",
+        (booking["slot_id"],)
+    )
+
+    conn.commit()
+    conn.close()
+
+    return {"success": True, "message": "Booking cancelled"}
+
     
 @app.route("/health")
 def health():
     return {"status": "ok"}
-
-@app.route("/api/refresh", methods=["POST"])
-def refresh_access_token():
-
-    token = request.cookies.get("refresh_token")
-
-    if not token:
-        return {"message": "No refresh token"}, 401
-
-    try:
-        data = jwt.decode(
-        token,
-        JWT_REFRESH_SECRET,
-        algorithms=["HS256"]
-    )
-
-        new_access = jwt.encode(
-{
-    "user_id": data["user_id"],
-    "role": data["role"],
-    "exp": datetime.utcnow() + timedelta(minutes=15)
-},
-        JWT_ACCESS_SECRET,
-        algorithm="HS256"
-)
-
-
-
-        return {
-            "success": True,
-            "access_token": new_access
-}
-
-
-    except jwt.ExpiredSignatureError:
-        return {"message": "Refresh expired"}, 401
-
-    except jwt.InvalidTokenError:
-        return {"message": "Invalid refresh token"}, 401
 
 
 if __name__ == '__main__':

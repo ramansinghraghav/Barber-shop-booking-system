@@ -756,7 +756,7 @@ def cancel_booking():
     return {"success": True, "message": "Booking cancelled"}
 
     
-@app.route("/health")
+@app.route("/api/health")
 def health():
     return {"status": "ok"}
 

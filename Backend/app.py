@@ -29,31 +29,26 @@ if not DATABASE_URL:
 
 app = Flask (__name__)
 
+from flask_cors import CORS
+
 CORS(
     app,
     supports_credentials=True,
-    origins=[
-        "http://localhost:3000",
-        "http://localhost:5500",   # ✅ ADD THIS
-        "https://barber-shop-booking-system.onrender.com"
-    ]
+    resources={
+        r"/api/*": {
+            "origins": [
+                "http://localhost:5500",
+                "http://localhost:3000",
+                "https://barber-shop-booking-system.onrender.com"
+            ]
+        }
+    }
 )
 
 if os.getenv("FLASK_ENV") == "development":
     create_tables()
 
 app.secret_key = FLASK_SECRET_KEY
-@app.after_request
-def add_cors_headers(response):
-    response.headers["Access-Control-Allow-Origin"] = "http://localhost:5500"
-    response.headers["Access-Control-Allow-Headers"] = "Content-Type,Authorization"
-    response.headers["Access-Control-Allow-Methods"] = "GET,POST,PUT,DELETE,OPTIONS"
-    response.headers["Access-Control-Allow-Credentials"] = "true"
-    return response
-
-@app.route('/api/<path:path>', methods=['OPTIONS'])
-def handle_options(path):
-    return '', 200
 
 def generate_access_token(user):
     payload = {
@@ -70,12 +65,6 @@ def generate_refresh_token(user):
         "exp": datetime.utcnow() + timedelta(days=7)
     }
     return jwt.encode(payload, JWT_REFRESH_SECRET, algorithm="HS256")
-
-@app.after_request
-def add_headers(response):
-    response.headers.setdefault("Content-Type", "application/json")
-    return response
-
 
 @app.route("/api/logout", methods=["POST"])
 def logout():
@@ -220,12 +209,7 @@ def api_signup():
     except Exception as e:
         return {"success": False, "error": str(e)}, 500
 
-@app.route('/api/<path:path>', methods=['OPTIONS'])
-def options_handler(path):
-    return '', 200
-
-
-@app.route('/api/login', methods=['POST', 'OPTIONS'])
+@app.route('/api/login', methods=['POST'])
 def api_login():
     conn = None
     try:

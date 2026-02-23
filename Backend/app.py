@@ -32,7 +32,11 @@ app = Flask (__name__)
 CORS(
     app,
     supports_credentials=True,
-    resources={r"/api/*": {"origins": "*"}}
+    origins=[
+        "http://localhost:3000",
+        "http://localhost:5500",   # ✅ ADD THIS
+        "https://barber-shop-booking-system.onrender.com"
+    ]
 )
 
 if os.getenv("FLASK_ENV") == "development":
@@ -50,7 +54,7 @@ def add_cors_headers(response):
 @app.route('/api/<path:path>', methods=['OPTIONS'])
 def handle_options(path):
     return '', 200
-    
+
 def generate_access_token(user):
     payload = {
         "user_id": user["id"],

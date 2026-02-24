@@ -29,6 +29,8 @@ if not DATABASE_URL:
 
 
 app = Flask(__name__)
+print("✅ Checking database tables...")
+create_tables()
 
 CORS(
     app,
@@ -42,11 +44,6 @@ CORS(
         }
     }
 )
-
-@app.before_first_request
-def initialize_database():
-    print("✅ Checking database tables...")
-    create_tables()
 
 app.secret_key = FLASK_SECRET_KEY
 

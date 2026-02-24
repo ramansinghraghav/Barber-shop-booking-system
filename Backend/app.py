@@ -296,7 +296,15 @@ def get_services():
 
     conn.close()
 
-    return {"services": services}
+    return jsonify({
+    "success": True,
+    "service": {
+        "id": new_service.id,
+        "name": new_service.name,
+        "price": new_service.price,
+        "duration": new_service.duration
+    }
+})
 
 @app.route('/api/service', methods=['POST'])
 @token_required(role="barber")
@@ -385,7 +393,14 @@ def api_add_shop():
     conn.commit()
     conn.close()
 
-    return {"success": True, "message": "Shop created successfully"}, 201
+    return jsonify({
+    "success": True,
+    "message": "Shop created successfully",
+    "shop": {
+        "id": new_shop.id,
+        "name": new_shop.name
+    }
+})
 
 @app.route('/api/generate-slots', methods=['POST'])
 @token_required(role="barber")

@@ -34,15 +34,11 @@ from flask_cors import CORS
 CORS(
     app,
     supports_credentials=True,
-    resources={
-        r"/api/*": {
-            "origins": [
-                "http://localhost:5500",
-                "http://localhost:3000",
-                "https://barber-shop-booking-system.onrender.com"
-            ]
-        }
-    }
+     origins=[
+        "http://localhost:5500",
+        "http://localhost:3000",
+        "https://barber-shop-booking-system.onrender.com"
+    ]
 )
 
 if os.getenv("FLASK_ENV") == "development":

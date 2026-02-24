@@ -448,17 +448,22 @@ def api_generate_slots():
             JOIN barber_shops ON services.shop_id = barber_shops.id
             WHERE services.id=%s
         """, (service_id,))
-        shop = cursor.fetchone()
-        if not shop:
-            return {"success": False, "message": "Shop not found"}, 404
+    shop = cursor.fetchone()
 
-        start_time = datetime.strptime(str(shop["open_time"]), "%H:%M:%S")
-        end_time = datetime.strptime(str(shop["close_time"]), "%H:%M:%S")
+    if not shop:
+        return {"success": False, "message": "Shop not found"}, 404
 
-        duration = int(service["duration"])
-        current = start_time
+    start_time = datetime.combine(
+        datetime.utcnow().date(),
+        shop["open_time"]
+)
 
-        while current + timedelta(minutes=duration) <= end_time:
+    end_time = datetime.combine(
+        datetime.utcnow().date(),
+        shop["close_time"]
+)
+
+    while current + timedelta(minutes=duration) <= end_time:
             cursor.execute("""
                 INSERT INTO slots
                 (service_id,date,start_time,end_time,is_available)

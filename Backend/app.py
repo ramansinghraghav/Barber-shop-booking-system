@@ -347,7 +347,16 @@ def api_add_service():
     conn.commit()
     conn.close()
 
-    return {"success": True, "message": "Service created successfully"}, 201
+    return jsonify({
+    "success": True,
+    "message": "Service created successfully",
+    "service": {
+        "id": new_service.id,
+        "name": new_service.name,
+        "price": new_service.price,
+        "duration": new_service.duration
+    }
+}), 201
 
 
 @app.route('/api/shop', methods=['POST'])

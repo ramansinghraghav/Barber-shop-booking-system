@@ -29,8 +29,10 @@ if not DATABASE_URL:
 
 
 app = Flask(__name__)
-print("✅ Checking database tables...")
-create_tables()
+
+with app.app_context():
+    print("✅ Checking database tables...")
+    create_tables()
 
 CORS(
     app,
@@ -415,6 +417,7 @@ def api_generate_slots():
 
     with get_cursor() as cursor:
 
+        # ✅ get service
         cursor.execute(
             "SELECT * FROM services WHERE id=%s",
             (service_id,)
@@ -424,46 +427,42 @@ def api_generate_slots():
         if not service:
             return {"success": False, "message": "Service not found"}, 404
 
+        # ✅ verify barber ownership
         cursor.execute("""
-            SELECT barber_shops.barber_id
+            SELECT barber_shops.barber_id,
+                   barber_shops.open_time,
+                   barber_shops.close_time
             FROM services
             JOIN barber_shops ON services.shop_id = barber_shops.id
             WHERE services.id=%s
         """, (service_id,))
-        barber = cursor.fetchone()
 
-        if not barber or barber["barber_id"] != request.user["user_id"]:
+        shop = cursor.fetchone()
+
+        if not shop:
+            return {"success": False, "message": "Shop not found"}, 404
+
+        if shop["barber_id"] != request.user["user_id"]:
             return {"success": False, "message": "Unauthorized"}, 403
 
         today = datetime.utcnow().date()
 
+        # ✅ delete old slots
         cursor.execute(
             "DELETE FROM slots WHERE service_id=%s AND date=%s",
             (service_id, today)
         )
 
-        cursor.execute("""
-            SELECT barber_shops.open_time, barber_shops.close_time
-            FROM services
-            JOIN barber_shops ON services.shop_id = barber_shops.id
-            WHERE services.id=%s
-        """, (service_id,))
-    shop = cursor.fetchone()
+        # ✅ FIXED TIME HANDLING (Postgres TIME → datetime)
+        start_time = datetime.combine(today, shop["open_time"])
+        end_time = datetime.combine(today, shop["close_time"])
 
-    if not shop:
-        return {"success": False, "message": "Shop not found"}, 404
+        duration = int(service["duration"])
+        current = start_time
 
-    start_time = datetime.combine(
-        datetime.utcnow().date(),
-        shop["open_time"]
-)
+        # ✅ generate slots
+        while current + timedelta(minutes=duration) <= end_time:
 
-    end_time = datetime.combine(
-        datetime.utcnow().date(),
-        shop["close_time"]
-)
-
-    while current + timedelta(minutes=duration) <= end_time:
             cursor.execute("""
                 INSERT INTO slots
                 (service_id,date,start_time,end_time,is_available)
@@ -478,39 +477,6 @@ def api_generate_slots():
             current += timedelta(minutes=duration)
 
     return {"success": True, "message": "Slots generated for today"}
-
-@app.route('/api/book-slot', methods=['POST'])
-@token_required(role="customer")
-def api_book_slot():
-    data = request.get_json()
-
-    if not data:
-        return {"success": False, "message": "JSON body required"}, 400
-
-    user_id = request.user["user_id"]
-
-    slot_id = data.get('slot_id')
-    if not slot_id:
-        return {"success": False, "message": "slot_id required"}, 400
-
-    with get_cursor() as cursor:
-
-        cursor.execute(
-            "UPDATE slots SET is_available=0 WHERE id=%s AND is_available=1",
-            (slot_id,)
-        )
-
-        if cursor.rowcount == 0:
-            return {"success": False, "message": "Slot already booked"}, 409
-
-        cursor.execute(
-            "INSERT INTO bookings (user_id,slot_id,status) VALUES (%s,%s,%s)",
-            (user_id, slot_id, "booked")
-        )
-    return {
-    "success": True,
-    "message": "Slot booked successfully"
-    }, 201
 
 @app.route('/api/slots/<int:service_id>', methods=['GET'])
 @token_required(role="customer")

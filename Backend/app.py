@@ -29,14 +29,20 @@ if not DATABASE_URL:
 
 app = Flask(__name__)
 
-CORS(app, resources={
-    r"/api/*": {
-        "origins": [
-            "http://127.0.0.1:5500",
-            "http://localhost:5500"
-        ]
+from flask_cors import CORS
+
+CORS(
+    app,
+    supports_credentials=True,
+    resources={
+        r"/api/*": {
+            "origins": [
+                "http://127.0.0.1:5500",
+                "http://localhost:5500"
+            ]
+        }
     }
-})
+)
 
 if os.getenv("FLASK_ENV") == "development":
     create_tables()

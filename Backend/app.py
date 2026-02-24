@@ -1,5 +1,6 @@
 from werkzeug.security import generate_password_hash,check_password_hash
 from flask_cors import CORS
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 from Backend.db import get_db_connection
 from Backend.create_tables import create_tables
@@ -29,8 +30,6 @@ if not DATABASE_URL:
 
 app = Flask(__name__)
 
-from flask_cors import CORS
-
 CORS(
     app,
     supports_credentials=True,
@@ -44,10 +43,22 @@ CORS(
     }
 )
 
-if os.getenv("FLASK_ENV") == "development":
+@app.before_first_request
+def initialize_database():
+    print("✅ Checking database tables...")
     create_tables()
 
 app.secret_key = FLASK_SECRET_KEY
+
+@contextmanager
+def get_cursor():
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        yield cursor
+        conn.commit()
+    finally:
+        conn.close()
 
 def generate_access_token(user):
     payload = {
@@ -274,96 +285,83 @@ def api_login():
 @token_required()
 def get_services():
 
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
     role = request.user["role"]
     user_id = request.user["user_id"]
 
-    if role == "barber":
-        cursor.execute("""
-            SELECT services.id, services.name, services.price, services.duration
-            FROM services
-            JOIN barber_shops ON services.shop_id = barber_shops.id
-            WHERE barber_shops.barber_id = %s
-        """, (user_id,))
-    else:
-        cursor.execute("""
-            SELECT id, name, price, duration FROM services
-        """)
+    with get_cursor() as cursor:
 
-    services = cursor.fetchall()
+        if role == "barber":
+            cursor.execute("""
+                SELECT services.id, services.name, services.price, services.duration
+                FROM services
+                JOIN barber_shops ON services.shop_id = barber_shops.id
+                WHERE barber_shops.barber_id = %s
+            """, (user_id,))
+        else:
+            cursor.execute(
+                "SELECT id, name, price, duration FROM services"
+            )
 
-    conn.close()
+        services = [dict(s) for s in cursor.fetchall()]
 
     return jsonify({
-    "success": True,
-    "service": {
-        "id": new_service.id,
-        "name": new_service.name,
-        "price": new_service.price,
-        "duration": new_service.duration
-    }
-})
+        "success": True,
+        "services": services
+    })
 
 @app.route('/api/service', methods=['POST'])
 @token_required(role="barber")
 def api_add_service():
-    data = request.get_json()
 
+    data = request.get_json()
     if not data:
         return {"success": False, "message": "JSON body required"}, 400
 
-    shop_id = data.get('shop_id')
-    name = data.get('name')
-    price = data.get('price')
-    duration = data.get('duration')
+    shop_id = data.get("shop_id")
+    if not shop_id:
+        return {"success": False, "message": "shop_id required"}, 400
+    name = data.get("name")
+    price = data.get("price")
+    duration = data.get("duration")
 
-    if not shop_id or not name or not price or not duration:
-        return {
-            "success": False,
-            "message": "shop_id, name, price, duration required"
-        }, 400
+    barber_id = request.user["user_id"]
 
-    conn = get_db_connection() 
-    cursor = conn.cursor()                 
-    barber_id = request.user["user_id"]            
+    with get_cursor() as cursor:
 
-    cursor.execute(
-    "SELECT id FROM barber_shops WHERE id=%s AND barber_id=%s",
-    (shop_id, barber_id)
-)
-    shop = cursor.fetchone()
+        cursor.execute(
+            "SELECT id FROM barber_shops WHERE id=%s AND barber_id=%s",
+            (shop_id, barber_id)
+        )
 
-    if not shop:
-        conn.close()
-        return {"success": False, "message": "Unauthorized shop"}, 403
+        shop = cursor.fetchone()
 
-    cursor.execute(
-        "INSERT INTO services (shop_id, name, price, duration) VALUES (%s, %s, %s, %s)",
-        (shop_id, name, price, duration)
-    )
+        if not shop:
+            return {"success": False, "message": "Unauthorized shop"}, 403
 
-    conn.commit()
-    conn.close()
+        cursor.execute("""
+            INSERT INTO services (shop_id,name,price,duration)
+            VALUES (%s,%s,%s,%s)
+            RETURNING id
+        """, (shop_id, name, price, duration))
+
+        service_id = cursor.fetchone()["id"]
 
     return jsonify({
-    "success": True,
-    "message": "Service created successfully",
-    "service": {
-        "id": new_service.id,
-        "name": new_service.name,
-        "price": new_service.price,
-        "duration": new_service.duration
-    }
-}), 201
-
+        "success": True,
+        "message": "Service created successfully",
+        "service": {
+            "id": service_id,
+            "name": name,
+            "price": price,
+            "duration": duration
+        }
+    }), 201
 
 @app.route('/api/shop', methods=['POST'])
 @token_required(role="barber")
 def api_add_shop():
-    data = request.get_json()
 
+    data = request.get_json()
     if not data:
         return {"success": False, "message": "JSON body required"}, 400
 
@@ -379,127 +377,105 @@ def api_add_shop():
             "message": "shop_name, address, open_time, close_time required"
         }, 400
 
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    with get_cursor() as cursor:
 
-    
-    cursor.execute(
-        "SELECT id FROM barber_shops WHERE barber_id=%s",
-        (barber_id,)
-    )
-    existing = cursor.fetchone()
+        cursor.execute(
+            "SELECT id FROM barber_shops WHERE barber_id=%s",
+            (barber_id,)
+        )
 
-    if existing:
-        conn.close()
-        return {"success": False, "message": "Shop already exists"}, 409
+        if cursor.fetchone():
+            return {"success": False, "message": "Shop already exists"}, 409
 
-    
-
-    cursor.execute(
-        "INSERT INTO barber_shops (barber_id, shop_name, address, open_time, close_time) VALUES (%s, %s, %s, %s, %s)",
-        (barber_id, shop_name, address, open_time, close_time)
-)
-    conn.commit()
-    conn.close()
-
+        cursor.execute("""
+            INSERT INTO barber_shops
+            (barber_id,shop_name,address,open_time,close_time)
+            VALUES (%s,%s,%s,%s,%s)
+            RETURNING id
+    """,(barber_id, shop_name, address, open_time, close_time))
+        shop_id = cursor.fetchone()["id"]
     return jsonify({
-    "success": True,
-    "message": "Shop created successfully",
-    "shop": {
-        "id": new_shop.id,
-        "name": new_shop.name
+        "success": True,
+        "message": "Shop created successfully",
+        "shop": {
+        "id": shop_id,
+        "name": shop_name
     }
-})
+}), 201
 
 @app.route('/api/generate-slots', methods=['POST'])
 @token_required(role="barber")
 def api_generate_slots():
+
     data = request.get_json()
 
     if not data:
         return {"success": False, "message": "JSON body required"}, 400
 
-    service_id = data.get('service_id')
+    service_id = data.get("service_id")
     if not service_id:
         return {"success": False, "message": "service_id required"}, 400
 
-    conn = get_db_connection() 
-    cursor = conn.cursor() 
+    with get_cursor() as cursor:
 
-    cursor.execute(
-        "SELECT * FROM services WHERE id = %s",
-        (service_id,)
-    )
-    service = cursor.fetchone()
-
-    if service is None:
-        conn.close()
-        return {"success": False, "message": "Service not found"}, 404
-
-    cursor.execute("""
-    SELECT barber_shops.barber_id
-    FROM services
-    JOIN barber_shops ON services.shop_id = barber_shops.id
-    WHERE services.id = %s
-""", (service_id,))
-    barber = cursor.fetchone()
-
-    if not barber:
-        conn.close()
-        return {"success": False, "message": "Unauthorized"}, 403
-
-    if barber["barber_id"] != request.user["user_id"]:
-        conn.close()
-        return {"success": False, "message": "Unauthorized"}, 403
-
-
-    today = datetime.utcnow().date()
-
-
-    cursor.execute(
-        "DELETE FROM slots WHERE service_id = %s AND date = %s",
-        (service_id, today)
-    )
-
-    # shop timing fetch karo
-    cursor.execute("""
-    SELECT barber_shops.open_time, barber_shops.close_time
-    FROM services
-    JOIN barber_shops ON services.shop_id = barber_shops.id
-    WHERE services.id = %s
-""", (service_id,))
-    shop = cursor.fetchone()
-
-    if not shop:
-        conn.close()
-        return {"success": False, "message": "Shop not found"}, 404
-
-    start_time = datetime.strptime(str(shop["open_time"]), "%H:%M:%S")
-    end_time = datetime.strptime(str(shop["close_time"]), "%H:%M:%S")
-
-
-    duration = int(service["duration"])
-
-    current = start_time
-    while current + timedelta(minutes=duration) <= end_time:
         cursor.execute(
-            """INSERT INTO slots
-               (service_id, date, start_time, end_time, is_available)
-               VALUES (%s, %s, %s, %s, 1)""",
-            (
+            "SELECT * FROM services WHERE id=%s",
+            (service_id,)
+        )
+        service = cursor.fetchone()
+
+        if not service:
+            return {"success": False, "message": "Service not found"}, 404
+
+        cursor.execute("""
+            SELECT barber_shops.barber_id
+            FROM services
+            JOIN barber_shops ON services.shop_id = barber_shops.id
+            WHERE services.id=%s
+        """, (service_id,))
+        barber = cursor.fetchone()
+
+        if not barber or barber["barber_id"] != request.user["user_id"]:
+            return {"success": False, "message": "Unauthorized"}, 403
+
+        today = datetime.utcnow().date()
+
+        cursor.execute(
+            "DELETE FROM slots WHERE service_id=%s AND date=%s",
+            (service_id, today)
+        )
+
+        cursor.execute("""
+            SELECT barber_shops.open_time, barber_shops.close_time
+            FROM services
+            JOIN barber_shops ON services.shop_id = barber_shops.id
+            WHERE services.id=%s
+        """, (service_id,))
+        shop = cursor.fetchone()
+        if not shop:
+            return {"success": False, "message": "Shop not found"}, 404
+
+        start_time = datetime.strptime(str(shop["open_time"]), "%H:%M:%S")
+        end_time = datetime.strptime(str(shop["close_time"]), "%H:%M:%S")
+
+        duration = int(service["duration"])
+        current = start_time
+
+        while current + timedelta(minutes=duration) <= end_time:
+            cursor.execute("""
+                INSERT INTO slots
+                (service_id,date,start_time,end_time,is_available)
+                VALUES (%s,%s,%s,%s,1)
+            """, (
                 service_id,
                 today,
                 current.strftime("%H:%M"),
                 (current + timedelta(minutes=duration)).strftime("%H:%M")
-            )
-        )
-        current += timedelta(minutes=duration)
+            ))
 
-    conn.commit()
-    conn.close()
+            current += timedelta(minutes=duration)
 
-    return {"success": True, "message": "Slots generated successfully"}, 201
-
+    return {"success": True, "message": "Slots generated for today"}
 
 @app.route('/api/book-slot', methods=['POST'])
 @token_required(role="customer")
@@ -510,62 +486,42 @@ def api_book_slot():
         return {"success": False, "message": "JSON body required"}, 400
 
     user_id = request.user["user_id"]
-    slot_id = data.get('slot_id')
 
+    slot_id = data.get('slot_id')
     if not slot_id:
         return {"success": False, "message": "slot_id required"}, 400
 
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    with get_cursor() as cursor:
 
-    
-    cursor.execute(
-        "UPDATE slots SET is_available = 0 WHERE id = %s AND is_available = 1",
-        (slot_id,)
-    )
+        cursor.execute(
+            "UPDATE slots SET is_available=0 WHERE id=%s AND is_available=1",
+            (slot_id,)
+        )
 
-    if cursor.rowcount == 0:
-        conn.close()
-        return {
-            "success": False,
-            "message": "Slot already booked"
-        }, 409
+        if cursor.rowcount == 0:
+            return {"success": False, "message": "Slot already booked"}, 409
 
-    # Insert booking
-    cursor.execute(
-        "INSERT INTO bookings (user_id, slot_id, status) VALUES (%s, %s, %s)",
-        (user_id, slot_id, "booked")
-    )
-
-    conn.commit()
-    conn.close()
-
+        cursor.execute(
+            "INSERT INTO bookings (user_id,slot_id,status) VALUES (%s,%s,%s)",
+            (user_id, slot_id, "booked")
+        )
     return {
-        "success": True,
-        "message": "Slot booked successfully"
+    "success": True,
+    "message": "Slot booked successfully"
     }, 201
 
 @app.route('/api/slots/<int:service_id>', methods=['GET'])
 @token_required(role="customer")
 def api_view_slots(service_id):
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    with get_cursor() as cursor:
 
-   
-    cursor.execute("""
-        SELECT id, date, start_time, end_time
-        FROM slots
-        WHERE service_id = %s AND is_available = 1
-    """, (service_id,))
-    slots = cursor.fetchall()
+        cursor.execute("""
+            SELECT id,date,start_time,end_time
+            FROM slots
+            WHERE service_id=%s AND is_available=1
+    """,(service_id,))
 
-    conn.close()
-
-    if not slots:
-        return {
-            "success": False,
-            "message": "No available slots"
-        }, 404
+        slots = cursor.fetchall()
 
     return {
         "success": True,
@@ -588,35 +544,29 @@ def update_service(service_id):
     if not data:
         return {"success": False, "message": "JSON body required"}, 400
 
-
     name = data.get("name")
     price = data.get("price")
     duration = data.get("duration")
 
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
     barber_id = request.user["user_id"]
 
-    cursor.execute("""
-        SELECT services.id
-        FROM services
-        JOIN barber_shops ON services.shop_id = barber_shops.id
-        WHERE services.id=%s AND barber_shops.barber_id=%s
-    """, (service_id, barber_id))
+    with get_cursor() as cursor:
 
-    if not cursor.fetchone():
-        conn.close()
-        return {"success": False, "message": "Unauthorized"}, 403
+        cursor.execute("""
+            SELECT services.id
+            FROM services
+            JOIN barber_shops ON services.shop_id = barber_shops.id
+            WHERE services.id=%s AND barber_shops.barber_id=%s
+        """, (service_id, barber_id))
 
-    cursor.execute("""
-        UPDATE services
-        SET name=%s, price=%s, duration=%s
-        WHERE id=%s
-    """, (name, price, duration, service_id))
+        if not cursor.fetchone():
+            return {"success": False, "message": "Unauthorized"}, 403
 
-    conn.commit()
-    conn.close()
+        cursor.execute("""
+            UPDATE services
+            SET name=%s, price=%s, duration=%s
+            WHERE id=%s
+        """, (name, price, duration, service_id))
 
     return {"success": True, "message": "Service updated"}
 
@@ -626,21 +576,18 @@ def delete_service(service_id):
 
     barber_id = request.user["user_id"]
 
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    with get_cursor() as cursor:
 
-    cursor.execute("""
-        DELETE services FROM services
-        JOIN barber_shops ON services.shop_id = barber_shops.id
-        WHERE services.id=%s AND barber_shops.barber_id=%s
-    """, (service_id, barber_id))
+        cursor.execute("""
+            DELETE FROM services
+            USING barber_shops
+            WHERE services.shop_id = barber_shops.id
+            AND services.id=%s
+            AND barber_shops.barber_id=%s
+        """, (service_id, barber_id))
 
-    if cursor.rowcount == 0:
-        conn.close()
-        return {"success": False, "message": "Unauthorized"}, 403
-
-    conn.commit()
-    conn.close()
+        if cursor.rowcount == 0:
+            return {"success": False, "message": "Unauthorized"}, 403
 
     return {"success": True, "message": "Service deleted"}
 
@@ -650,55 +597,46 @@ def get_shop():
 
     barber_id = request.user["user_id"]
 
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    with get_cursor() as cursor:
 
-    cursor.execute(
-        "SELECT * FROM barber_shops WHERE barber_id=%s",
-        (barber_id,)
-    )
+        cursor.execute(
+            "SELECT * FROM barber_shops WHERE barber_id=%s",
+            (barber_id,)
+        )
+        shop = cursor.fetchone()
+        if not shop:
+            return {"success": False, "message": "Shop not found"}, 404
 
-    shop = cursor.fetchone()
-    conn.close()
-
-    if not shop:
-        return {"success": False, "message": "Shop not found"}, 404
-
-    return {"success": True, "shop": shop}
-
+    return {"success": True, "shop": dict(shop)}
+    
 @app.route("/api/barber-bookings", methods=["GET"])
 @token_required(role="barber")
 def barber_bookings():
 
     barber_id = request.user["user_id"]
 
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    with get_cursor() as cursor:
 
-    cursor.execute("""
-        SELECT 
-            bookings.id AS booking_id,
-            bookings.status,
-            users.name AS customer_name,
-            slots.date,
-            slots.start_time,
-            slots.end_time,
-            services.name AS service_name
-        FROM bookings
-        JOIN slots ON bookings.slot_id = slots.id
-        JOIN services ON slots.service_id = services.id
-        JOIN barber_shops ON services.shop_id = barber_shops.id
-        JOIN users ON bookings.user_id = users.id
-        WHERE barber_shops.barber_id = %s
-    """, (barber_id,))
+        cursor.execute("""
+            SELECT 
+                bookings.id AS booking_id,
+                bookings.status,
+                users.name AS customer_name,
+                slots.date,
+                slots.start_time,
+                slots.end_time,
+                services.name AS service_name
+            FROM bookings
+            JOIN slots ON bookings.slot_id = slots.id
+            JOIN services ON slots.service_id = services.id
+            JOIN barber_shops ON services.shop_id = barber_shops.id
+            JOIN users ON bookings.user_id = users.id
+            WHERE barber_shops.barber_id = %s
+        """, (barber_id,))
 
-    data = cursor.fetchall()
-    conn.close()
+        data = [dict(d) for d in cursor.fetchall()]
 
-    return {
-        "success": True,
-        "bookings": data
-    }
+    return {"success": True, "bookings": data}
 
 
 @app.route('/api/my-bookings', methods=['GET'])
@@ -707,34 +645,27 @@ def my_bookings():
 
     user_id = request.user["user_id"]
 
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    with get_cursor() as cursor:
 
+        cursor.execute("""
+            SELECT 
+                bookings.id AS booking_id,
+                bookings.status,
+                slots.date,
+                slots.start_time,
+                slots.end_time,
+                services.name AS service_name,
+                barber_shops.shop_name
+            FROM bookings
+            JOIN slots ON bookings.slot_id = slots.id
+            JOIN services ON slots.service_id = services.id
+            JOIN barber_shops ON services.shop_id = barber_shops.id
+            WHERE bookings.user_id = %s
+        """, (user_id,))
 
-    cursor.execute("""
-        SELECT 
-            bookings.id AS booking_id,
-            bookings.status,
-            slots.date,
-            slots.start_time,
-            slots.end_time,
-            services.name AS service_name,
-            barber_shops.shop_name
-        FROM bookings
-        JOIN slots ON bookings.slot_id = slots.id
-        JOIN services ON slots.service_id = services.id
-        JOIN barber_shops ON services.shop_id = barber_shops.id
-        WHERE bookings.user_id = %s
-    """, (user_id,))
+        bookings = [dict(b) for b in cursor.fetchall()]
 
-    bookings = cursor.fetchall()
-
-    conn.close()
-
-    return {
-        "success": True,
-        "bookings": bookings
-    }
+    return {"success": True, "bookings": bookings}
 
 @app.route('/api/cancel-booking', methods=['POST'])
 @token_required(role="customer")
@@ -745,40 +676,32 @@ def cancel_booking():
         return {"success": False, "message": "JSON body required"}, 400
 
     booking_id = data.get("booking_id")
-
     user_id = request.user["user_id"]
 
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
+    with get_cursor() as cursor:
 
-    cursor.execute(
-        "SELECT slot_id FROM bookings WHERE id=%s AND user_id=%s",
-        (booking_id, user_id)
-    )
+        cursor.execute(
+            "SELECT slot_id FROM bookings WHERE id=%s AND user_id=%s",
+            (booking_id, user_id)
+        )
 
-    booking = cursor.fetchone()
+        booking = cursor.fetchone()
 
-    if not booking:
-        conn.close()
-        return {"success": False, "message": "Invalid booking"}, 404
+        if not booking:
+            return {"success": False, "message": "Invalid booking"}, 404
 
-    cursor.execute(
-        "UPDATE bookings SET status='cancelled' WHERE id=%s",
-        (booking_id,)
-    )
+        cursor.execute(
+            "UPDATE bookings SET status='cancelled' WHERE id=%s",
+            (booking_id,)
+        )
 
-    cursor.execute(
-        "UPDATE slots SET is_available = 1 WHERE id=%s",
-        (booking["slot_id"],)
-    )
-
-    conn.commit()
-    conn.close()
+        cursor.execute(
+            "UPDATE slots SET is_available=1 WHERE id=%s",
+            (booking["slot_id"],)
+        )
 
     return {"success": True, "message": "Booking cancelled"}
 
-    
 @app.route("/api/health")
 def health():
     return {"status": "ok"}

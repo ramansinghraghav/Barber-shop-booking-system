@@ -303,7 +303,39 @@ def get_services():
         "success": True,
         "services": services
     })
+@app.route("/api/shops", methods=["GET"])
+@token_required(role="customer")
+def get_shops():
+    conn = get_db_connection()
+    cursor = conn.cursor()
 
+    cursor.execute("""
+        SELECT id, shop_name, address
+        FROM barber_shops
+    """)
+
+    shops = cursor.fetchall()
+    conn.close()
+
+    return {"shops": shops}
+
+@app.route("/api/shop-services/<int:shop_id>", methods=["GET"])
+@token_required(role="customer")
+def get_shop_services(shop_id):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT id, name, price, duration
+        FROM services
+        WHERE shop_id = %s
+    """, (shop_id,))
+
+    services = cursor.fetchall()
+    conn.close()
+
+    return {"services": services}
+    
 @app.route('/api/service', methods=['POST'])
 @token_required(role="barber")
 def api_add_service():

@@ -17,7 +17,6 @@ JWT_REFRESH_SECRET = os.getenv("JWT_REFRESH_SECRET")
 
 if not FLASK_SECRET_KEY:
     raise Exception("Missing FLASK_SECRET_KEY in .env")
-
 if not JWT_ACCESS_SECRET or not JWT_REFRESH_SECRET:
     raise Exception("JWT secrets missing in .env file")
 
@@ -34,17 +33,14 @@ with app.app_context():
     print("✅ Checking database tables...")
     create_tables()
 
-CORS(
+CCORS(
     app,
     supports_credentials=True,
-    resources={
-        r"/api/*": {
-            "origins": [
-                "http://127.0.0.1:5500",
-                "http://localhost:5500"
-            ]
-        }
-    }
+    origins=[
+        "http://localhost:5173",
+        "http://localhost:3000",
+        "https://barber-shop-booking-system.onrender.com"
+    ]
 )
 
 app.secret_key = FLASK_SECRET_KEY

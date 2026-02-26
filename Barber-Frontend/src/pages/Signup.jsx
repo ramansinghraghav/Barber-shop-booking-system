@@ -8,6 +8,11 @@ function Signup() {
   const [password, setPassword] = useState("");
   const [role, setRole] = useState("customer");
 
+  const [shopName, setShopName] = useState("");
+  const [address, setAddress] = useState("");
+  const [openTime, setOpenTime] = useState("");
+  const [closeTime, setCloseTime] = useState("");
+
   const navigate = useNavigate();
 
   const handleSignup = async () => {
@@ -17,6 +22,10 @@ function Signup() {
         phone,
         password,
         role,
+        shop_name: role === "barber" ? shopName : null,
+        address: role === "barber" ? address : null,
+        open_time: role === "barber" ? openTime : null,
+        close_time: role === "barber" ? closeTime : null
       });
 
       alert("Signup successful ✅");
@@ -32,38 +41,27 @@ function Signup() {
     <div>
       <h2>Signup</h2>
 
-      <input
-        placeholder="Name"
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-      />
+      <input placeholder="Name" onChange={(e) => setName(e.target.value)} />
+      <input placeholder="Phone" onChange={(e) => setPhone(e.target.value)} />
+      <input type="password" placeholder="Password" onChange={(e) => setPassword(e.target.value)} />
 
-      <input
-        placeholder="Phone"
-        value={phone}
-        onChange={(e) => setPhone(e.target.value)}
-      />
-
-      <input
-        type="password"
-        placeholder="Password"
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-      />
-
-      <select value={role} onChange={(e) => setRole(e.target.value)}>
+      <select onChange={(e) => setRole(e.target.value)}>
         <option value="customer">Customer</option>
         <option value="barber">Barber</option>
       </select>
 
-      <button onClick={handleSignup}>Signup</button>
+      {/* Show only for barber */}
+      {role === "barber" && (
+        <>
+          <h3>Shop Details</h3>
+          <input placeholder="Shop Name" onChange={(e) => setShopName(e.target.value)} />
+          <input placeholder="Address" onChange={(e) => setAddress(e.target.value)} />
+          <input placeholder="Open Time (09:00)" onChange={(e) => setOpenTime(e.target.value)} />
+          <input placeholder="Close Time (18:00)" onChange={(e) => setCloseTime(e.target.value)} />
+        </>
+      )}
 
-      <p
-        onClick={() => navigate("/")}
-        style={{ cursor: "pointer", color: "blue" }}
-      >
-        Already have account? Login
-      </p>
+      <button onClick={handleSignup}>Signup</button>
     </div>
   );
 }

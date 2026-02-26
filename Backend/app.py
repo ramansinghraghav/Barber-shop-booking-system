@@ -171,41 +171,52 @@ def api_signup():
     try:
         data = request.get_json()
 
-        if not data:
-            return {"success": False, "message": "JSON body required"}, 400
-
         name = data.get('name')
         phone = data.get('phone')
         raw_password = data.get('password')
         role = data.get('role')
 
-        if not name or not phone or not raw_password or not role:
-            return {"success": False, "message": "name, phone, password, role required"}, 400
+        shop_name = data.get('shop_name')
+        address = data.get('address')
+        open_time = data.get('open_time')
+        close_time = data.get('close_time')
 
-        # ✅ Role validation BEFORE insert
-        if role not in ["customer", "barber"]:
-            return {"success": False, "message": "Invalid role"}, 400
+        if not name or not phone or not raw_password or not role:
+            return {"success": False, "message": "Missing fields"}, 400
 
         password = generate_password_hash(raw_password)
 
         conn = get_db_connection()
         cursor = conn.cursor()
 
-        cursor.execute(
-        "SELECT id FROM users WHERE phone=%s",
-        (phone,)
-)
-
+        # Check if phone exists
+        cursor.execute("SELECT id FROM users WHERE phone=%s", (phone,))
         existing = cursor.fetchone()
 
         if existing:
             conn.close()
             return {"success": False, "message": "Phone already registered"}, 409
 
+        # 🔹 Step 1: Insert user
         cursor.execute(
-            "INSERT INTO users (name, phone, password, role) VALUES (%s, %s, %s, %s)",
+            "INSERT INTO users (name, phone, password, role) VALUES (%s, %s, %s, %s) RETURNING id",
             (name, phone, password, role)
-)
+        )
+
+        user = cursor.fetchone()
+        user_id = user["id"]
+
+        # 🔹 Step 2: If barber → create shop automatically
+        if role == "barber":
+            cursor.execute(
+                """
+                INSERT INTO barber_shops 
+                (barber_id, shop_name, address, open_time, close_time)
+                VALUES (%s, %s, %s, %s, %s)
+                """,
+                (user_id, shop_name, address, open_time, close_time)
+            )
+
         conn.commit()
         conn.close()
 
@@ -335,7 +346,7 @@ def get_shop_services(shop_id):
     conn.close()
 
     return {"services": services}
-    
+
 @app.route('/api/service', methods=['POST'])
 @token_required(role="barber")
 def api_add_service():

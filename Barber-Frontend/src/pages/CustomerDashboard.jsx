@@ -1,21 +1,41 @@
+import Navbar from "../components/Navbar";
 import { useEffect, useState } from "react";
 import API from "../api/axios";
 
 function CustomerDashboard() {
+  const [shops, setShops] = useState([]);
   const [services, setServices] = useState([]);
   const [slots, setSlots] = useState([]);
+
+  const [selectedShop, setSelectedShop] = useState(null);
   const [selectedService, setSelectedService] = useState(null);
 
+  // 🔹 Load all shops
   useEffect(() => {
-    API.get("/api/services")
-      .then((res) => {
-        setServices(res.data.services);
-      })
+    API.get("/api/shops")
+      .then((res) => setShops(res.data.shops))
       .catch((err) => {
         console.log(err);
-        alert("Failed to load services");
+        alert("Failed to load shops");
       });
   }, []);
+
+  const goBack = () => {
+    setSelectedShop(null);
+    setServices([]);
+    setSlots([]);
+  };
+
+  const loadServices = async (shopId) => {
+    try {
+      const res = await API.get(`/api/shop-services/${shopId}`);
+      setServices(res.data.services);
+      setSelectedShop(shopId);
+      setSlots([]);
+    } catch (err) {
+      alert("No services found");
+    }
+  };
 
   const loadSlots = async (serviceId) => {
     try {
@@ -35,8 +55,6 @@ function CustomerDashboard() {
       });
 
       alert("Slot booked successfully 🎉");
-
-      // reload slots
       loadSlots(selectedService);
     } catch (err) {
       alert("Slot already booked ❌");
@@ -45,29 +63,77 @@ function CustomerDashboard() {
 
   return (
     <div>
+      <Navbar />
       <h2>Customer Dashboard</h2>
 
-      <h3>Services</h3>
-      {services.map((service) => (
-        <div key={service.id} style={{ border: "1px solid gray", padding: "10px", margin: "10px" }}>
-          <h4>{service.name}</h4>
-          <p>Price: ₹{service.price}</p>
-          <p>Duration: {service.duration} mins</p>
-          <button onClick={() => loadSlots(service.id)}>
-            View Slots
-          </button>
-        </div>
-      ))}
+      {/* 🔹 Shops Section */}
+      {!selectedShop && (
+        <>
+          <h3>Available Shops</h3>
+          {shops.map((shop) => (
+            <div
+              key={shop.id}
+              style={{
+                border: "1px solid gray",
+                padding: "10px",
+                margin: "10px",
+                cursor: "pointer",
+              }}
+              onClick={() => loadServices(shop.id)}
+            >
+              <h4>{shop.shop_name}</h4>
+              <p>{shop.address}</p>
+            </div>
+          ))}
+        </>
+      )}
 
+      {/* 🔹 Services Section */}
+      {selectedShop && (
+        <>
+          <button onClick={goBack}>⬅ Back to Shops</button>
+
+          <h3>Services</h3>
+          {services.map((service) => (
+            <div
+              key={service.id}
+              style={{
+                border: "1px solid blue",
+                padding: "10px",
+                margin: "10px",
+              }}
+            >
+              <h4>{service.name}</h4>
+              <p>₹{service.price}</p>
+              <p>{service.duration} mins</p>
+              <button onClick={() => loadSlots(service.id)}>
+                View Slots
+              </button>
+            </div>
+          ))}
+        </>
+      )}
+
+      {/* 🔹 Slots Section */}
       {slots.length > 0 && (
         <>
           <h3>Available Slots</h3>
           {slots.map((slot) => (
-            <div key={slot.slot_id} style={{ border: "1px solid blue", padding: "10px", margin: "10px" }}>
+            <div
+              key={slot.slot_id}
+              style={{
+                border: "1px solid green",
+                padding: "10px",
+                margin: "10px",
+              }}
+            >
               <p>Date: {slot.date}</p>
-              <p>Time: {slot.start_time} - {slot.end_time}</p>
+              <p>
+                {slot.start_time} - {slot.end_time}
+              </p>
               <button onClick={() => bookSlot(slot.slot_id)}>
-                Book</button>
+                Book
+              </button>
             </div>
           ))}
         </>

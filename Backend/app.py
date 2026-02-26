@@ -33,7 +33,7 @@ with app.app_context():
     print("✅ Checking database tables...")
     create_tables()
 
-CCORS(
+CORS(
     app,
     supports_credentials=True,
     origins=[

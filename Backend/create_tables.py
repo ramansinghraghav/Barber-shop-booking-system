@@ -22,9 +22,14 @@ def create_tables():
             barber_id INTEGER,
             shop_name TEXT,
             address TEXT,
-            open_time TEXT,
-            close_time TEXT
+            open_time TIME,
+            close_time TIME,
+            capacity INTEGER
         )
+""")
+    cursor.execute("""
+        ALTER TABLE barber_shops
+        ADD COLUMN IF NOT EXISTS capacity INTEGER DEFAULT 1
     """)
 
     # SERVICES
@@ -44,8 +49,8 @@ def create_tables():
             id SERIAL PRIMARY KEY,
             service_id INTEGER,
             date DATE,
-            start_time TEXT,
-            end_time TEXT,
+            start_time TIME,
+            end_time TIME,
             is_available BOOLEAN DEFAULT TRUE
         )
     """)

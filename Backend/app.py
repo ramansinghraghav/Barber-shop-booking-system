@@ -207,15 +207,16 @@ def api_signup():
         user_id = user["id"]
 
         # 🔹 Step 2: If barber → create shop automatically
+        capacity = data.get("capacity")
+
         if role == "barber":
             cursor.execute(
-                """
-                INSERT INTO barber_shops 
-                (barber_id, shop_name, address, open_time, close_time)
-                VALUES (%s, %s, %s, %s, %s)
-                """,
-                (user_id, shop_name, address, open_time, close_time)
-            )
+            """INSERT INTO barber_shops
+            (barber_id, shop_name, address, open_time, close_time, capacity)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            """,
+        (user_id, shop_name, address, open_time, close_time, capacity)
+    )
 
         conn.commit()
         conn.close()
@@ -355,9 +356,6 @@ def api_add_service():
     if not data:
         return {"success": False, "message": "JSON body required"}, 400
 
-    shop_id = data.get("shop_id")
-    if not shop_id:
-        return {"success": False, "message": "shop_id required"}, 400
     name = data.get("name")
     price = data.get("price")
     duration = data.get("duration")
@@ -366,25 +364,29 @@ def api_add_service():
 
     with get_cursor() as cursor:
 
+        # 🔹 Get barber's shop automatically
         cursor.execute(
-            "SELECT id FROM barber_shops WHERE id=%s AND barber_id=%s",
-            (shop_id, barber_id)
+            "SELECT id FROM barber_shops WHERE barber_id=%s",
+            (barber_id,)
         )
 
         shop = cursor.fetchone()
 
         if not shop:
-            return {"success": False, "message": "Unauthorized shop"}, 403
+            return {"success": False, "message": "Shop not found"}, 404
 
+        shop_id = shop["id"]
+
+        # 🔹 Insert service
         cursor.execute("""
-            INSERT INTO services (shop_id,name,price,duration)
-            VALUES (%s,%s,%s,%s)
+            INSERT INTO services (shop_id, name, price, duration)
+            VALUES (%s, %s, %s, %s)
             RETURNING id
         """, (shop_id, name, price, duration))
 
         service_id = cursor.fetchone()["id"]
 
-    return jsonify({
+    return {
         "success": True,
         "message": "Service created successfully",
         "service": {
@@ -393,53 +395,7 @@ def api_add_service():
             "price": price,
             "duration": duration
         }
-    }), 201
-
-@app.route('/api/shop', methods=['POST'])
-@token_required(role="barber")
-def api_add_shop():
-
-    data = request.get_json()
-    if not data:
-        return {"success": False, "message": "JSON body required"}, 400
-
-    barber_id = request.user["user_id"]
-    shop_name = data.get('shop_name')
-    address = data.get('address')
-    open_time = data.get('open_time')
-    close_time = data.get('close_time')
-
-    if not shop_name or not address or not open_time or not close_time:
-        return {
-            "success": False,
-            "message": "shop_name, address, open_time, close_time required"
-        }, 400
-
-    with get_cursor() as cursor:
-
-        cursor.execute(
-            "SELECT id FROM barber_shops WHERE barber_id=%s",
-            (barber_id,)
-        )
-
-        if cursor.fetchone():
-            return {"success": False, "message": "Shop already exists"}, 409
-
-        cursor.execute("""
-            INSERT INTO barber_shops
-            (barber_id,shop_name,address,open_time,close_time)
-            VALUES (%s,%s,%s,%s,%s)
-            RETURNING id
-    """,(barber_id, shop_name, address, open_time, close_time))
-        shop_id = cursor.fetchone()["id"]
-    return jsonify({
-        "success": True,
-        "message": "Shop created successfully",
-        "shop": {
-        "id": shop_id,
-        "name": shop_name
-    }
-}), 201
+    }, 201
 
 @app.route('/api/generate-slots', methods=['POST'])
 @token_required(role="barber")
@@ -468,9 +424,10 @@ def api_generate_slots():
 
         # ✅ verify barber ownership
         cursor.execute("""
-            SELECT barber_shops.barber_id,
-                   barber_shops.open_time,
-                   barber_shops.close_time
+           SELECT barber_shops.barber_id,
+                barber_shops.open_time,
+                barber_shops.close_time,
+                barber_shops.capacity
             FROM services
             JOIN barber_shops ON services.shop_id = barber_shops.id
             WHERE services.id=%s
@@ -484,36 +441,24 @@ def api_generate_slots():
         if shop["barber_id"] != request.user["user_id"]:
             return {"success": False, "message": "Unauthorized"}, 403
 
-        today = datetime.utcnow().date()
+    capacity = shop.get("capacity", 1)
 
-        # ✅ delete old slots
-        cursor.execute(
-            "DELETE FROM slots WHERE service_id=%s AND date=%s",
-            (service_id, today)
-        )
+    while current + timedelta(minutes=duration) <= end_time:
 
-        # ✅ FIXED TIME HANDLING (Postgres TIME → datetime)
-        start_time = datetime.combine(today, shop["open_time"])
-        end_time = datetime.combine(today, shop["close_time"])
-
-        duration = int(service["duration"])
-        current = start_time
-
-        # ✅ generate slots
-        while current + timedelta(minutes=duration) <= end_time:
+        for i in range(int(capacity)):
 
             cursor.execute("""
-                INSERT INTO slots
-                (service_id,date,start_time,end_time,is_available)
-                VALUES (%s,%s,%s,%s,1)
-            """, (
-                service_id,
-                today,
-                current.strftime("%H:%M"),
-                (current + timedelta(minutes=duration)).strftime("%H:%M")
-            ))
+            INSERT INTO slots
+            (service_id,date,start_time,end_time,is_available)
+            VALUES (%s,%s,%s,%s,1)
+        """, (
+            service_id,
+            today,
+            current.strftime("%H:%M"),
+            (current + timedelta(minutes=duration)).strftime("%H:%M")
+        ))
 
-            current += timedelta(minutes=duration)
+    current += timedelta(minutes=duration)
 
     return {"success": True, "message": "Slots generated for today"}
 

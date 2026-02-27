@@ -35,12 +35,10 @@ with app.app_context():
 
 CORS(
     app,
+    resources={r"/api/*": {"origins": "*"}},
     supports_credentials=True,
-    origins=[
-        "http://localhost:5173",
-        "http://localhost:3000",
-        "https://barber-shop-booking-system.onrender.com"
-    ]
+    allow_headers=["Content-Type", "Authorization"],
+    methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"]
 )
 
 app.secret_key = FLASK_SECRET_KEY

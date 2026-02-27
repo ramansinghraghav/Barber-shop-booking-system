@@ -64,6 +64,12 @@ function Signup() {
       )}
 
       <button onClick={handleSignup}>Signup</button>
+      <p>
+        Already have an account?{" "}
+        <span style={{ color: "blue", cursor: "pointer" }} onClick={() => navigate("/login")}>
+        Login
+     </span>
+    </p>
     </div>
   );
 }

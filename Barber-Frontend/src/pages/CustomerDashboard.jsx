@@ -26,6 +26,11 @@ function CustomerDashboard() {
     setSlots([]);
   };
 
+  const handleLogout = () => {
+  localStorage.removeItem("access_token");
+  localStorage.removeItem("user");
+  navigate("/login");
+  };
   const loadServices = async (shopId) => {
     try {
       const res = await API.get(`/api/shop-services/${shopId}`);
@@ -63,7 +68,7 @@ function CustomerDashboard() {
 
   return (
     <div>
-      <Navbar />
+      
       <h2>Customer Dashboard</h2>
 
       {/* 🔹 Shops Section */}

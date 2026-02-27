@@ -1,3 +1,4 @@
+import { useNavigate } from "react-router-dom";
 import { useState } from "react";
 import API from "../api/axios";
 
@@ -61,6 +62,14 @@ function BarberDashboard() {
       console.log(err);
     }
   };
+
+  const navigate = useNavigate();
+
+  const handleLogout = () => {
+   localStorage.removeItem("access_token");
+  localStorage.removeItem("user");
+  navigate("/login");
+};
 
   return (
     <div>

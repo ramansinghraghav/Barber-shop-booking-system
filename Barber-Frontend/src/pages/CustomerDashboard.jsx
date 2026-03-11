@@ -1,8 +1,10 @@
 import Navbar from "../components/Navbar";
 import { useEffect, useState } from "react";
 import API from "../api/axios";
+import { useNavigate } from "react-router-dom";
 
 function CustomerDashboard() {
+  const navigate = useNavigate();
   const [shops, setShops] = useState([]);
   const [services, setServices] = useState([]);
   const [slots, setSlots] = useState([]);
@@ -66,12 +68,14 @@ function CustomerDashboard() {
     }
   };
 
-  return (
-    <div>
-      
+return (
+  <>
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
       <h2>Customer Dashboard</h2>
+      <button onClick={handleLogout}>Logout</button>
+    </div>
 
-      {/* 🔹 Shops Section */}
+    {/* 🔹 Shops Section */}
       {!selectedShop && (
         <>
           <h3>Available Shops</h3>
@@ -143,7 +147,7 @@ function CustomerDashboard() {
           ))}
         </>
       )}
-    </div>
+    </>
   );
 }
 

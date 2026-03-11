@@ -86,7 +86,7 @@ function BarberDashboard() {
       <h3>Create Shop</h3>
 
       <div className="form-row">
-        <input placeholder="Shop Name"
+        <input value={shopName}
           onChange={(e) => setShopName(e.target.value)} />
 
         <input placeholder="Address"
@@ -136,4 +136,7 @@ function BarberDashboard() {
     </div>
 
   </div>
-  )};
+  );
+}
+
+export default BarberDashboard;

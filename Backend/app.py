@@ -35,7 +35,9 @@ with app.app_context():
 
 CORS(
     app,
-    resources={r"/api/*": {"origins": "*"}},
+    resources={r"/api/*": {
+        "origins": ["https://barber-shop-booking-system-staticsite.onrender.com"]
+    }},
     supports_credentials=True,
     allow_headers=["Content-Type", "Authorization"],
     methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"]

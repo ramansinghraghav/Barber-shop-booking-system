@@ -226,7 +226,7 @@ def api_signup():
     except Exception as e:
         return {"success": False, "error": str(e)}, 500
 
-@app.route('/login', methods=['POST'])
+@app.route('/api/login', methods=['POST', 'OPTIONS'])
 def login():
     conn = None
     try:
@@ -433,15 +433,16 @@ def api_generate_slots():
             WHERE services.id=%s
         """, (service_id,))
 
-        shop = cursor.fetchone()
+    shop = cursor.fetchone()
 
-        if not shop:
-            return {"success": False, "message": "Shop not found"}, 404
-
-        if shop["barber_id"] != request.user["user_id"]:
-            return {"success": False, "message": "Unauthorized"}, 403
-
+    duration = service["duration"]
     capacity = shop.get("capacity", 1)
+
+    today = datetime.today().date()
+
+    start_time = datetime.strptime(shop["open_time"], "%H:%M")
+    end_time = datetime.strptime(shop["close_time"], "%H:%M")
+    current = start_time
 
     while current + timedelta(minutes=duration) <= end_time:
 

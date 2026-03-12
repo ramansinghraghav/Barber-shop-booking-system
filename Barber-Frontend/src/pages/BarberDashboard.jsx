@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import { useState } from "react";
+import { useState,useEffect} from "react";
 import "./BarberDashboard.css";
 import API from "../api/axios";
 
@@ -12,7 +12,16 @@ function BarberDashboard() {
   const [serviceName, setServiceName] = useState("");
   const [price, setPrice] = useState("");
   const [duration, setDuration] = useState("");
-  const [shopId, setShopId] = useState("");
+  const [shopId, setShopId] = useState(null);
+  useEffect(() => {
+  API.get("/api/my-shop")
+    .then((res) => {
+      setShopId(res.data.shop_id);
+    })
+    .catch(() => {
+      alert("Shop not found");
+    });
+}, []);
 
   const [serviceId, setServiceId] = useState("");
 
@@ -81,34 +90,11 @@ function BarberDashboard() {
       <button onClick={handleLogout}>Logout</button>
     </div>
 
-    {/* CREATE SHOP */}
-    <div className="section">
-      <h3>Create Shop</h3>
-
-      <div className="form-row">
-        <input value={shopName}
-          onChange={(e) => setShopName(e.target.value)} />
-
-        <input placeholder="Address"
-          onChange={(e) => setAddress(e.target.value)} />
-
-        <input placeholder="Open Time (09:00)"
-          onChange={(e) => setOpenTime(e.target.value)} />
-
-        <input placeholder="Close Time (18:00)"
-          onChange={(e) => setCloseTime(e.target.value)} />
-
-        <button onClick={createShop}>Create Shop</button>
-      </div>
-    </div>
-
     {/* ADD SERVICE */}
     <div className="section">
       <h3>Add Service</h3>
 
       <div className="form-row">
-        <input placeholder="Shop ID"
-          onChange={(e) => setShopId(e.target.value)} />
 
         <input placeholder="Service Name"
           onChange={(e) => setServiceName(e.target.value)} />

@@ -9,9 +9,9 @@ function Login() {
 
   const handleLogin = async () => {
     try {
-      const res = await API.post("/api/login",Date, {
-        phone,
-        password,
+      const res = await API.post("/login", {
+  phone,
+  password,
       });
 
       localStorage.setItem("access_token", res.data.access_token);

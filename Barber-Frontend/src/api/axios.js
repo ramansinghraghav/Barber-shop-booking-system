@@ -1,7 +1,7 @@
 import axios from "axios";
 
 const API = axios.create({
-  baseURL: "https://barber-shop-booking-system.onrender.com",
+  baseURL: "https://barber-shop-booking-system.onrender.com/api",
   withCredentials: true
 });
 

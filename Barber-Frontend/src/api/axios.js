@@ -2,14 +2,19 @@ import axios from "axios";
 
 const API = axios.create({
   baseURL: "https://barber-shop-booking-system.onrender.com/api",
-  withCredentials: true
+  headers: {
+    "Content-Type": "application/json",
+  },
 });
 
+// Automatically attach token
 API.interceptors.request.use((config) => {
-  const token = localStorage.getItem("access_token");
+  const token = localStorage.getItem("token");
+
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+
   return config;
 });
 

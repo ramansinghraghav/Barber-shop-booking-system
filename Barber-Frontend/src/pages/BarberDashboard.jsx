@@ -14,7 +14,7 @@ function BarberDashboard() {
   const [duration, setDuration] = useState("");
   const [shopId, setShopId] = useState(null);
   useEffect(() => {
-  API.get("/api/my-shop")
+  API.get("/my-shop")
     .then((res) => {
       setShopId(res.data.shop_id);
     })
@@ -28,7 +28,7 @@ function BarberDashboard() {
   // Create Shop
   const createShop = async () => {
     try {
-      const res = await API.post("/api/shop", {
+      const res = await API.post("/shops", {
         shop_name: shopName,
         address,
         open_time: openTime,
@@ -45,7 +45,7 @@ function BarberDashboard() {
   // Add Service
   const addService = async () => {
     try {
-      await API.post("/api/service", {
+      await API.post("/service", {
         shop_id: shopId,
         name: serviceName,
         price,
@@ -62,7 +62,7 @@ function BarberDashboard() {
   // Generate Slots
   const generateSlots = async () => {
     try {
-      await API.post("/api/generate-slots", {
+      await API.post("/generate-slots", {
         service_id: serviceId,
       });
 

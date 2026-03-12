@@ -71,7 +71,7 @@ def generate_refresh_token(user):
     }
     return jwt.encode(payload, JWT_REFRESH_SECRET, algorithm="HS256")
 
-@app.route("/api/logout", methods=["POST"])
+@app.route("/logout", methods=["POST"])
 def logout():
     response = make_response({
         "success": True,
@@ -130,7 +130,7 @@ def home():
     return "Server running successfully"
 
 
-@app.route("/api/refresh", methods=["POST"])
+@app.route("/refresh", methods=["POST"])
 def refresh_access_token():
 
     token = request.cookies.get("refresh_token")
@@ -166,7 +166,7 @@ def refresh_access_token():
     except jwt.InvalidTokenError:
         return {"message": "Invalid refresh token"}, 401
 
-@app.route('/api/signup', methods=['POST'])
+@app.route('/signup', methods=['POST'])
 def api_signup():
     try:
         data = request.get_json()
@@ -226,7 +226,7 @@ def api_signup():
     except Exception as e:
         return {"success": False, "error": str(e)}, 500
 
-@app.route('/api/login', methods=['POST'])
+@app.route('/login', methods=['POST'])
 def login():
     conn = None
     try:
@@ -288,7 +288,7 @@ def login():
             conn.close()
 
 
-@app.route("/api/services", methods=["GET"])
+@app.route("/services", methods=["GET"])
 @token_required()
 def get_services():
 
@@ -315,7 +315,7 @@ def get_services():
         "success": True,
         "services": services
     })
-@app.route("/api/shops", methods=["GET"])
+@app.route("/shops", methods=["GET"])
 @token_required(role="customer")
 def get_shops():
     conn = get_db_connection()
@@ -331,7 +331,7 @@ def get_shops():
 
     return {"shops": shops}
 
-@app.route("/api/shop-services/<int:shop_id>", methods=["GET"])
+@app.route("/shop-services/<int:shop_id>", methods=["GET"])
 @token_required(role="customer")
 def get_shop_services(shop_id):
     conn = get_db_connection()
@@ -348,7 +348,7 @@ def get_shop_services(shop_id):
 
     return {"services": services}
 
-@app.route('/api/service', methods=['POST'])
+@app.route('/service', methods=['POST'])
 @token_required(role="barber")
 def api_add_service():
 
@@ -397,7 +397,7 @@ def api_add_service():
         }
     }, 201
 
-@app.route('/api/generate-slots', methods=['POST'])
+@app.route('/generate-slots', methods=['POST'])
 @token_required(role="barber")
 def api_generate_slots():
 
@@ -462,7 +462,7 @@ def api_generate_slots():
 
     return {"success": True, "message": "Slots generated for today"}
 
-@app.route('/api/slots/<int:service_id>', methods=['GET'])
+@app.route('/slots/<int:service_id>', methods=['GET'])
 @token_required(role="customer")
 def api_view_slots(service_id):
     with get_cursor() as cursor:
@@ -488,7 +488,7 @@ def api_view_slots(service_id):
         ]
     }
 
-@app.route("/api/service/<int:service_id>", methods=["PUT"])
+@app.route("/service/<int:service_id>", methods=["PUT"])
 @token_required(role="barber")
 def update_service(service_id):
 
@@ -522,7 +522,7 @@ def update_service(service_id):
 
     return {"success": True, "message": "Service updated"}
 
-@app.route("/api/service/<int:service_id>", methods=["DELETE"])
+@app.route("/service/<int:service_id>", methods=["DELETE"])
 @token_required(role="barber")
 def delete_service(service_id):
 
@@ -543,7 +543,7 @@ def delete_service(service_id):
 
     return {"success": True, "message": "Service deleted"}
 
-@app.route("/api/shop", methods=["GET"])
+@app.route("/shop", methods=["GET"])
 @token_required(role="barber")
 def get_shop():
 
@@ -561,7 +561,7 @@ def get_shop():
 
     return {"success": True, "shop": dict(shop)}
     
-@app.route("/api/barber-bookings", methods=["GET"])
+@app.route("/barber-bookings", methods=["GET"])
 @token_required(role="barber")
 def barber_bookings():
 
@@ -590,7 +590,7 @@ def barber_bookings():
 
     return {"success": True, "bookings": data}
 
-@app.route("/api/my-shop", methods=["GET"])
+@app.route("/my-shop", methods=["GET"])
 @token_required
 def get_my_shop(current_user):
     conn = get_db_connection()
@@ -618,7 +618,7 @@ def get_my_shop(current_user):
             "message": "Shop not found"
         }), 404
 
-@app.route('/api/my-bookings', methods=['GET'])
+@app.route('/my-bookings', methods=['GET'])
 @token_required(role="customer")
 def my_bookings():
 
@@ -646,7 +646,7 @@ def my_bookings():
 
     return {"success": True, "bookings": bookings}
 
-@app.route('/api/cancel-booking', methods=['POST'])
+@app.route('/cancel-booking', methods=['POST'])
 @token_required(role="customer")
 def cancel_booking():
 
@@ -681,7 +681,7 @@ def cancel_booking():
 
     return {"success": True, "message": "Booking cancelled"}
 
-@app.route("/api/health")
+@app.route("/health")
 def health():
     return {"status": "ok"}
 

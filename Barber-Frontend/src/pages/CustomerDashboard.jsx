@@ -14,7 +14,7 @@ function CustomerDashboard() {
 
   // 🔹 Load all shops
   useEffect(() => {
-    API.get("/api/shops")
+    API.get("/shops")
       .then((res) => setShops(res.data.shops))
       .catch((err) => {
         console.log(err);
@@ -35,7 +35,7 @@ function CustomerDashboard() {
   };
   const loadServices = async (shopId) => {
     try {
-      const res = await API.get(`/api/shop-services/${shopId}`);
+      const res = await API.get(`/shop-services/${shopId}`);
       setServices(res.data.services);
       setSelectedShop(shopId);
       setSlots([]);
@@ -46,7 +46,7 @@ function CustomerDashboard() {
 
   const loadSlots = async (serviceId) => {
     try {
-      const res = await API.get(`/api/slots/${serviceId}`);
+      const res = await API.get(`/slots/${serviceId}`);
       setSlots(res.data.slots);
       setSelectedService(serviceId);
     } catch (err) {
@@ -57,7 +57,7 @@ function CustomerDashboard() {
 
   const bookSlot = async (slotId) => {
     try {
-      await API.post("/api/book-slot", {
+      await API.post("/book-slot", {
         slot_id: slotId,
       });
 

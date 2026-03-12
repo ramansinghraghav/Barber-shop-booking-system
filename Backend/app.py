@@ -227,7 +227,7 @@ def api_signup():
         return {"success": False, "error": str(e)}, 500
 
 @app.route('/api/login', methods=['POST'])
-def api_login():
+def login():
     conn = None
     try:
         data = request.get_json()
@@ -590,6 +590,33 @@ def barber_bookings():
 
     return {"success": True, "bookings": data}
 
+@app.route("/api/my-shop", methods=["GET"])
+@token_required
+def get_my_shop(current_user):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        "SELECT id, shop_name FROM shops WHERE barber_id = %s",
+        (current_user["id"],)
+    )
+
+    shop = cursor.fetchone()
+
+    cursor.close()
+    conn.close()
+
+    if shop:
+        return jsonify({
+            "success": True,
+            "shop_id": shop[0],
+            "shop_name": shop[1]
+        })
+    else:
+        return jsonify({
+            "success": False,
+            "message": "Shop not found"
+        }), 404
 
 @app.route('/api/my-bookings', methods=['GET'])
 @token_required(role="customer")

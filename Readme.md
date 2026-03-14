@@ -166,7 +166,7 @@ barber-shop-booking-system
 
 └── README.md
 
-API Endpoints (Example)
+API Endpoints 
 
 Method	Endpoint	Description
 
@@ -184,7 +184,7 @@ Installation
 
 1 Clone the repository
 
-git clone https://github.com/yourusername/barber-shop-booking-system.git
+git clone https://github.com/ramansinghraghav/Barber-shop-booking-system.git
 
 2 Backend Setup
 
